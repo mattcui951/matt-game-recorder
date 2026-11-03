@@ -64,6 +64,7 @@ export const zhCN: Messages = {
     upToDate: (when) => `已是最新版本（${when}检查）`,
     notChecked: '尚未检查',
     failed: '无法检查更新',
+    unreachable: '无法连接 GitHub，或没有收到更新信息。请检查网络后重试。',
     check: '检查更新',
     auto: '自动检查更新',
     version: (v) => `版本 ${v}`,

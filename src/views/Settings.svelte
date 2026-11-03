@@ -342,7 +342,7 @@
             {/if}
           </div>
         </div>
-        {#if u.phase === 'error' && u.error}<p class="note err">{u.error}</p>{/if}
+        {#if u.phase === 'error' && u.error}<p class="note err" title={u.error}>{t.update.unreachable}</p>{/if}
         <div class="row"><span>{U.auto}</span><Toggle label={U.auto} checked={s.general.checkUpdates} onchange={(v) => set((x) => (x.general.checkUpdates = v))} /></div>
         <p class="note">{U.note}</p>
       </section>

@@ -50,6 +50,7 @@ export const en = {
     upToDate: (when: string) => `You have the latest version (checked ${when})`,
     notChecked: 'Not checked yet',
     failed: 'Could not check for updates',
+    unreachable: 'GitHub could not be reached or sent no update information. Check the internet connection and try again.',
     check: 'Check for updates',
     auto: 'Check for updates automatically',
     version: (v: string) => `Version ${v}`,
