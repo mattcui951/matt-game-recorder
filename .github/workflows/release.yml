@@ -1,0 +1,84 @@
+# Builds the Windows installer and publishes it as a GitHub Release when a version tag is pushed.
+# The annotated tag's message becomes the release notes:
+#   git tag -a v0.3.0 -m "What changed" && git push origin v0.3.0
+# The release also carries latest.json and the installer's signature, which installed apps read
+# to offer the update (needs the TAURI_SIGNING_PRIVATE_KEY and _PASSWORD repository secrets).
+#
+# FFmpeg is too large for git: the pinned build is an asset of the "deps-ffmpeg" release in this
+# repository and is checked against its SHA-256 before it goes into the installer.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+env:
+  FFMPEG_ASSET: ffmpeg-8.1-win64-gpl.zip
+  FFMPEG_SHA256: a8b70ead7d7840d38a4e8dba12cb47e87536d412b4f93dc424c27ea36943e3d7
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Release notes from the tag message
+        id: notes
+        shell: bash
+        run: |
+          git fetch --depth=1 origin "+refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"
+          notes=$(git tag -l --format='%(contents)' "$GITHUB_REF_NAME")
+          {
+            echo 'text<<NOTES_EOF'
+            echo "$notes"
+            echo 'NOTES_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: FFmpeg (pinned build)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download deps-ffmpeg --repo "$GITHUB_REPOSITORY" --pattern "$FFMPEG_ASSET" --dir "$RUNNER_TEMP"
+          echo "$FFMPEG_SHA256  $RUNNER_TEMP/$FFMPEG_ASSET" | sha256sum --check
+          mkdir -p src-tauri/binaries
+          unzip -o "$RUNNER_TEMP/$FFMPEG_ASSET" ffmpeg.exe ffprobe.exe -d src-tauri/binaries
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      - name: Test
+        run: |
+          npx svelte-check --tsconfig ./tsconfig.json
+          cargo test --manifest-path src-tauri/Cargo.toml --lib
+
+      - name: Build installer and publish the release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Matt Game Recorder ${{ github.ref_name }}
+          releaseBody: |
+            ${{ steps.notes.outputs.text }}
+
+            **Install:** download `Matt.Game.Recorder_*_x64-setup.exe` below and run it. Already have Matt Game Recorder? It offers this update by itself.
+            Windows may say "Windows protected your PC" because the installer is not code-signed: click **More info**, then **Run anyway**.
+            Needs Windows 10 or 11. Records League of Legends automatically; the screen recorder works with anything.
+          releaseDraft: false
+          prerelease: false

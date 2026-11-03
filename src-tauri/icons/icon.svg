@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- Cabinet tile -->
+  <rect x="32" y="32" width="960" height="960" rx="210" fill="#1b1550"/>
+  <rect x="32" y="32" width="960" height="960" rx="210" fill="none" stroke="#3fe0f0" stroke-width="28"/>
+  <!-- Score-glyph M -->
+  <polyline points="248,812 248,392 512,656 776,392 776,812" fill="none" stroke="#3fe0f0" stroke-width="116" stroke-linejoin="miter" stroke-linecap="square"/>
+  <!-- REC light centered above the letter -->
+  <circle cx="512" cy="250" r="84" fill="#ff4f8b"/>
+</svg>

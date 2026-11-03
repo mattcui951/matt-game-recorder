@@ -1,0 +1,42 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Matt Game Recorder",
+  "version": "0.2.0",
+  "identifier": "com.matt.gamerecorder",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1430",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "windows": { "nsis": { "installMode": "perMachine" } },
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/icon.ico"],
+    "resources": {
+      "binaries/ffmpeg.exe": "ffmpeg.exe",
+      "binaries/ffprobe.exe": "ffprobe.exe",
+      "icons/icon.ico": "app.ico"
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDBFMzk0MkI3NTk3N0ZFRUMKUldUcy9uZFp0MEk1RGdVSTRQQUlCVjliVno0WWxCb2I1c0Z0cmhOUVBvTXV6Y3JCNWFyTVVManUK",
+      "endpoints": [
+        "https://github.com/mattcui951/matt-game-recorder/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}

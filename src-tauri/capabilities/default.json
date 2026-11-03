@@ -1,0 +1,23 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Main and dashboard windows",
+  "windows": [
+    "main",
+    "dashboard"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-close",
+    "core:window:allow-hide",
+    "core:window:allow-start-dragging",
+    "core:window:allow-is-maximized",
+    "dialog:default",
+    "opener:default",
+    "notification:default",
+    "core:window:allow-set-background-color",
+    "core:webview:allow-set-webview-zoom"
+  ]
+}
