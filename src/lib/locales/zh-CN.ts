@@ -521,6 +521,7 @@ export const zhCN: Messages = {
       checkingGpu: '正在检测显卡...',
       notAvailable: (name) => `${name}（不可用）`,
       preset: '预设',
+      presetHint: '高性能占用内存最少，但文件约大五分之一。',
       presetAria: '编码器预设',
       presetDefault: '系统默认',
       presetQuality: '高画质',

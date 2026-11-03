@@ -196,7 +196,7 @@
           <div class="row"><span>{V.encoder}<small>{devices ? '' : V.checkingGpu}</small></span>
             <div class="ctl"><Select label={V.encoder} value={s.video.encoder} onchange={(v) => setVideo('encoder', v)} options={(devices?.encoders ?? [{ id: s.video.encoder, label: s.video.encoder, available: true }]).map((e) => ({ value: e.id, label: e.available ? e.label : V.notAvailable(e.label), disabled: !e.available }))} /></div>
           </div>
-          <div class="row"><span>{V.preset}</span>
+          <div class="row"><span>{V.preset}<small>{V.presetHint}</small></span>
             <div class="ctl"><Select label={V.presetAria} value={s.video.encoderPreset} onchange={(v) => setVideo('encoderPreset', v)} options={[{ value: 'default', label: V.presetDefault }, { value: 'quality', label: V.presetQuality }, { value: 'performance', label: V.presetPerformance }, { value: 'lowlatency', label: V.presetLowLatency }, { value: 'perf_lowlatency', label: V.presetPerfLowLatency }, { value: 'quality_lowlatency', label: V.presetQualityLowLatency }]} /></div>
           </div>
           <div class="row"><span>{V.buffer}<small>{V.bufferHint}</small></span>

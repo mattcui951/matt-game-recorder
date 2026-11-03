@@ -1,17 +1,24 @@
-//! Low-level keyboard/mouse hooks, active only while a match is recorded.
-//! They count actions (for APM) and ultimate-key presses, but only while the game window is
-//! in the foreground. The callbacks do a couple of atomic operations and return, so they add
-//! no measurable input latency.
+//! Keyboard and mouse actions while a match is recorded, for APM and the ultimate-key mark,
+//! counted only while the game window is in the foreground.
+//!
+//! Raw Input, not low-level hooks: Windows sends this thread a copy of each input after the
+//! fact (RIDEV_INPUTSINK on a message-only window), so the recorder is never in the path from
+//! the mouse or keyboard to the game. With WH_*_LL hooks every key, click and mouse movement
+//! (about 1000 a second from a gaming mouse) went through the recorder before the game saw it.
 
 use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicU32, Ordering};
 use std::thread::JoinHandle;
-use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
+use windows::core::w;
+use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Threading::GetCurrentThreadId;
+use windows::Win32::UI::Input::{
+    GetRawInputData, RegisterRawInputDevices, HRAWINPUT, RAWINPUT, RAWINPUTDEVICE, RAWINPUTHEADER, RIDEV_INPUTSINK, RIDEV_REMOVE, RID_INPUT,
+    RIM_TYPEKEYBOARD, RIM_TYPEMOUSE,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, GetForegroundWindow, GetMessageW, PostThreadMessageW, SetWindowsHookExW, UnhookWindowsHookEx,
-    KBDLLHOOKSTRUCT, MSG, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN, WM_MBUTTONDOWN, WM_QUIT,
-    WM_RBUTTONDOWN, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_XBUTTONDOWN,
+    CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetForegroundWindow, GetMessageW, PostThreadMessageW, RegisterClassW,
+    HWND_MESSAGE, MSG, WINDOW_EX_STYLE, WINDOW_STYLE, WM_INPUT, WM_KEYDOWN, WM_KEYUP, WM_QUIT, WM_SYSKEYDOWN, WM_SYSKEYUP, WNDCLASSW,
 };
 
 static ACTIONS: AtomicU32 = AtomicU32::new(0);
@@ -20,39 +27,61 @@ static GAME_HWND: AtomicIsize = AtomicIsize::new(0);
 static ULT_VK: AtomicU32 = AtomicU32::new(0x52); // 'R'
 static KEY_DOWN: [AtomicBool; 256] = [const { AtomicBool::new(false) }; 256];
 
+/// Any mouse button pressed (left, right, middle, 4, 5).
+const BUTTON_DOWNS: u16 = 0x0001 | 0x0004 | 0x0010 | 0x0040 | 0x0100;
+
 fn game_focused() -> bool {
     let g = GAME_HWND.load(Ordering::Relaxed);
     g != 0 && unsafe { GetForegroundWindow().0 as isize } == g
 }
 
-unsafe extern "system" fn keyboard_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
-    if code >= 0 {
-        let kb = &*(lparam.0 as *const KBDLLHOOKSTRUCT);
-        let vk = (kb.vkCode & 0xff) as usize;
-        let msg = wparam.0 as u32;
-        if msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN {
-            // Ignore auto-repeat: only the first down of a held key counts.
-            if !KEY_DOWN[vk].swap(true, Ordering::Relaxed) && game_focused() {
-                ACTIONS.fetch_add(1, Ordering::Relaxed);
-                if vk as u32 == ULT_VK.load(Ordering::Relaxed) {
-                    ULT_PRESSES.fetch_add(1, Ordering::Relaxed);
-                }
-            }
-        } else if msg == WM_KEYUP || msg == WM_SYSKEYUP {
-            KEY_DOWN[vk].store(false, Ordering::Relaxed);
+/// A key went down or up. Auto-repeat is ignored: only the first down of a held key counts.
+fn on_key(vk: usize, down: bool) {
+    let vk = vk & 0xff;
+    if !down {
+        KEY_DOWN[vk].store(false, Ordering::Relaxed);
+    } else if !KEY_DOWN[vk].swap(true, Ordering::Relaxed) && game_focused() {
+        ACTIONS.fetch_add(1, Ordering::Relaxed);
+        if vk as u32 == ULT_VK.load(Ordering::Relaxed) {
+            ULT_PRESSES.fetch_add(1, Ordering::Relaxed);
         }
     }
-    CallNextHookEx(None, code, wparam, lparam)
 }
 
-unsafe extern "system" fn mouse_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
-    if code >= 0 {
-        let msg = wparam.0 as u32;
-        if matches!(msg, WM_LBUTTONDOWN | WM_RBUTTONDOWN | WM_MBUTTONDOWN | WM_XBUTTONDOWN) && game_focused() {
-            ACTIONS.fetch_add(1, Ordering::Relaxed);
+/// Count what one WM_INPUT carries.
+unsafe fn on_raw_input(lparam: LPARAM) {
+    let mut data = RAWINPUT::default();
+    let mut size = std::mem::size_of::<RAWINPUT>() as u32;
+    let got = GetRawInputData(HRAWINPUT(lparam.0 as _), RID_INPUT, Some(&mut data as *mut _ as *mut _), &mut size, std::mem::size_of::<RAWINPUTHEADER>() as u32);
+    if got == u32::MAX || got == 0 {
+        return;
+    }
+    if data.header.dwType == RIM_TYPEKEYBOARD.0 {
+        let kb = data.data.keyboard;
+        match kb.Message {
+            WM_KEYDOWN | WM_SYSKEYDOWN => on_key(kb.VKey as usize, true),
+            WM_KEYUP | WM_SYSKEYUP => on_key(kb.VKey as usize, false),
+            _ => {}
+        }
+    } else if data.header.dwType == RIM_TYPEMOUSE.0 {
+        let flags = data.data.mouse.Anonymous.Anonymous.usButtonFlags;
+        if flags & BUTTON_DOWNS != 0 && game_focused() {
+            ACTIONS.fetch_add((flags & BUTTON_DOWNS).count_ones(), Ordering::Relaxed);
         }
     }
-    CallNextHookEx(None, code, wparam, lparam)
+}
+
+unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    DefWindowProcW(hwnd, msg, wparam, lparam)
+}
+
+/// Keyboard (usage 6) and mouse (usage 2) on the generic desktop page, to `hwnd` (or removed).
+fn devices(hwnd: HWND, remove: bool) -> [RAWINPUTDEVICE; 2] {
+    let (flags, target) = if remove { (RIDEV_REMOVE, HWND::default()) } else { (RIDEV_INPUTSINK, hwnd) };
+    [
+        RAWINPUTDEVICE { usUsagePage: 0x01, usUsage: 0x06, dwFlags: flags, hwndTarget: target },
+        RAWINPUTDEVICE { usUsagePage: 0x01, usUsage: 0x02, dwFlags: flags, hwndTarget: target },
+    ]
 }
 
 pub struct InputMonitor {
@@ -85,24 +114,33 @@ impl InputMonitor {
         ULT_PRESSES.store(0, Ordering::Relaxed);
         let (tx, rx) = std::sync::mpsc::channel();
         let handle = std::thread::Builder::new()
-            .name("input-hooks".into())
+            .name("input".into())
             .spawn(move || unsafe {
-                let _ = tx.send(GetCurrentThreadId());
                 let module = GetModuleHandleW(None).ok();
-                let kb = SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_proc), module.map(Into::into), 0);
-                let ms = SetWindowsHookExW(WH_MOUSE_LL, Some(mouse_proc), module.map(Into::into), 0);
+                let class = w!("MggRawInputSink");
+                let wc = WNDCLASSW { lpfnWndProc: Some(wnd_proc), hInstance: module.unwrap_or_default().into(), lpszClassName: class, ..Default::default() };
+                RegisterClassW(&wc);
+                let window = CreateWindowExW(WINDOW_EX_STYLE(0), class, w!(""), WINDOW_STYLE(0), 0, 0, 0, 0, Some(HWND_MESSAGE), None, module.map(Into::into), None);
+                // The window gave this thread its message queue, so the quit message can't be lost.
+                let _ = tx.send(GetCurrentThreadId());
+                let Ok(hwnd) = window else {
+                    log::warn!("APM: could not create the input window");
+                    return;
+                };
+                let size = std::mem::size_of::<RAWINPUTDEVICE>() as u32;
+                if let Err(e) = RegisterRawInputDevices(&devices(hwnd, false), size) {
+                    log::warn!("APM: raw input unavailable: {e}");
+                }
                 let mut msg = MSG::default();
                 while GetMessageW(&mut msg, None, 0, 0).as_bool() {
-                    if msg.message == WM_QUIT {
-                        break;
+                    if msg.message == WM_INPUT {
+                        on_raw_input(msg.lParam);
                     }
+                    // Lets Windows release the input's buffer.
+                    DispatchMessageW(&msg);
                 }
-                if let Ok(h) = kb {
-                    let _ = UnhookWindowsHookEx(h);
-                }
-                if let Ok(h) = ms {
-                    let _ = UnhookWindowsHookEx(h);
-                }
+                let _ = RegisterRawInputDevices(&devices(hwnd, true), size);
+                let _ = DestroyWindow(hwnd);
             })
             .ok();
         let thread_id = rx.recv().unwrap_or(0);

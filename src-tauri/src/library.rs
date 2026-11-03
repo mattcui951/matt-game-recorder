@@ -18,6 +18,7 @@ use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 pub const DELETED_DIR: &str = "Recently Deleted";
 pub const SESSION_FILE: &str = "session.mgr.json";
@@ -238,6 +239,8 @@ struct Inner {
 pub struct Library {
     root: RwLock<PathBuf>,
     inner: RwLock<Inner>,
+    /// Bumped by every change, so background checks can skip a library they have already seen.
+    generation: AtomicU64,
 }
 
 fn rel(root: &Path, dir: &Path) -> String {
@@ -253,7 +256,7 @@ fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<()> {
 
 impl Library {
     pub fn new(root: PathBuf) -> Library {
-        let lib = Library { root: RwLock::new(root), inner: RwLock::default() };
+        let lib = Library { root: RwLock::new(root), inner: RwLock::default(), generation: AtomicU64::new(0) };
         lib.reload();
         lib
     }
@@ -299,7 +302,24 @@ impl Library {
                 }
             }
         }
-        *self.inner.write() = inner;
+        *self.write() = inner;
+    }
+
+    fn write(&self) -> parking_lot::RwLockWriteGuard<'_, Inner> {
+        self.generation.fetch_add(1, Ordering::Relaxed);
+        self.inner.write()
+    }
+
+    /// Changes so far; equal values mean nothing changed in between.
+    pub fn generation(&self) -> u64 {
+        self.generation.load(Ordering::Relaxed)
+    }
+
+    /// The sessions `keep` accepts, given each one's recordings. Only those are copied, unlike
+    /// `snapshot`, so a periodic check costs little.
+    pub fn sessions_where(&self, keep: impl Fn(&Session, &mut dyn Iterator<Item = &Recording>) -> bool) -> Vec<Session> {
+        let inner = self.inner.read();
+        inner.sessions.values().filter(|s| keep(s, &mut inner.recordings.values().filter(|r| r.session_id == s.id))).cloned().collect()
     }
 
     pub fn snapshot(&self) -> Snapshot {
@@ -504,7 +524,7 @@ impl Library {
 
     pub fn save_session(&self, s: &Session) -> Result<()> {
         write_json(&s.dir.join(SESSION_FILE), s)?;
-        self.inner.write().sessions.insert(s.id.clone(), s.clone());
+        self.write().sessions.insert(s.id.clone(), s.clone());
         Ok(())
     }
 
@@ -516,7 +536,7 @@ impl Library {
             r.size = meta.len();
         }
         write_json(&r.sidecar(), r)?;
-        self.inner.write().recordings.insert(r.id.clone(), r.clone());
+        self.write().recordings.insert(r.id.clone(), r.clone());
         Ok(())
     }
 
@@ -631,7 +651,7 @@ impl Library {
             if let Some(mut s) = read_json::<Session>(&dest.join(SESSION_FILE)) {
                 s.dir = dest.clone();
                 s.rel_dir = rel(&root, &dest);
-                self.inner.write().sessions.insert(s.id.clone(), s);
+                self.write().sessions.insert(s.id.clone(), s);
             }
         }
         self.save_recording(&mut r)
@@ -646,7 +666,7 @@ impl Library {
         if r.deleted_at.is_some() {
             let _ = std::fs::remove_dir(&r.dir);
         }
-        self.inner.write().recordings.remove(id);
+        self.write().recordings.remove(id);
         self.prune_empty_session(&r.session_id);
         Ok(())
     }
@@ -657,7 +677,7 @@ impl Library {
             return;
         }
         let has_deleted = self.inner.read().recordings.values().any(|r| r.session_id == session_id);
-        let mut inner = self.inner.write();
+        let mut inner = self.write();
         if let Some(s) = inner.sessions.get(session_id).cloned() {
             if !has_deleted {
                 let _ = std::fs::remove_file(s.dir.join(SESSION_FILE));
@@ -774,7 +794,7 @@ impl Library {
             };
             let kind = if session.capture_mode == "session" { "session" } else if session.capture_mode == "screen" { "screen" } else { "match" };
             if self.add_file(&session, kind, &stem, &fin, vec![], vec![], None).is_ok() {
-                self.inner.write().sessions.insert(session.id.clone(), session);
+                self.write().sessions.insert(session.id.clone(), session);
                 log::info!("recovered {}", fin.display());
                 n += 1;
             }
@@ -788,7 +808,7 @@ impl Library {
             let only_meta = std::fs::read_dir(&s.dir).map(|rd| rd.flatten().all(|e| e.file_name() == SESSION_FILE || e.file_name() == ".buffer")).unwrap_or(false);
             if only_meta {
                 let _ = std::fs::remove_dir_all(&s.dir);
-                self.inner.write().sessions.remove(&s.id);
+                self.write().sessions.remove(&s.id);
             }
         }
         n

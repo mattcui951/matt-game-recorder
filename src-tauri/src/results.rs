@@ -176,8 +176,13 @@ pub fn spawn(core: Arc<Core>) {
         .name("match-results".into())
         .spawn(move || {
             let mut checker = Checker::default();
+            // Nothing to look up and nothing changed since: skip, so an idle app stays idle.
+            let mut settled_at = None;
             loop {
-                checker.run(&core);
+                let generation = core.library.generation();
+                if settled_at != Some(generation) {
+                    settled_at = checker.run(&core).then_some(generation);
+                }
                 std::thread::sleep(Duration::from_secs(20));
             }
         })
@@ -199,50 +204,43 @@ struct Checker {
 impl Checker {
     fn missing(&self, core: &Core) -> Vec<Session> {
         let live = core.status.read().session_id.clone();
-        core.library
-            .snapshot()
-            .sessions
-            .into_iter()
-            .filter(|s| {
-                s.result.is_none()
-                    && s.game == crate::game::LOL_GAME
-                    // A full session can span several games.
-                    && s.capture_mode != "session"
-                    && s.champion_key.is_some()
-                    && live.as_deref() != Some(s.id.as_str())
-                    && !self.given_up.contains(&s.id)
-            })
-            .collect()
+        core.library.sessions_where(|s, _| {
+            s.result.is_none()
+                && s.game == crate::game::LOL_GAME
+                // A full session can span several games.
+                && s.capture_mode != "session"
+                && s.champion_key.is_some()
+                && live.as_deref() != Some(s.id.as_str())
+                && !self.given_up.contains(&s.id)
+        })
     }
 
     /// Sessions with kills, deaths or assists that name a player but not their champion (recorded
     /// before champions were stored).
     fn unnamed(&self, core: &Core) -> Vec<Session> {
-        let snap = core.library.snapshot();
-        snap.sessions
-            .into_iter()
-            .filter(|s| s.game == crate::game::LOL_GAME && s.champion_key.is_some() && s.capture_mode != "session" && !self.named.contains(&s.id))
-            .filter(|s| {
-                snap.recordings.iter().any(|r| {
-                    r.session_id == s.id && r.events.iter().any(|e| e.champion.is_none() && matches!(e.kind.as_str(), "kill" | "death" | "assist") && player_in_label(&e.label).is_some())
-                })
-            })
-            .collect()
+        core.library.sessions_where(|s, mut recordings| {
+            s.game == crate::game::LOL_GAME
+                && s.champion_key.is_some()
+                && s.capture_mode != "session"
+                && !self.named.contains(&s.id)
+                && Iterator::any(&mut recordings, |r| r.events.iter().any(|e| e.champion.is_none() && matches!(e.kind.as_str(), "kill" | "death" | "assist") && player_in_label(&e.label).is_some()))
+        })
     }
 
-    fn run(&mut self, core: &Core) {
+    /// Look up what is missing. True when nothing is left to look up until the library changes.
+    fn run(&mut self, core: &Core) -> bool {
         let missing = self.missing(core);
         let unnamed = self.unnamed(core);
         if missing.is_empty() && unnamed.is_empty() {
-            return;
+            return true;
         }
-        let Some(lcu) = Lcu::connect() else { return };
+        let Some(lcu) = Lcu::connect() else { return false };
         if self.champions.is_none() {
             self.champions = lcu.champions();
         }
-        let Some(champions) = &self.champions else { return };
-        let Some(games) = lcu.history(champions) else { return };
-        let Some(oldest) = games.iter().map(|g| g.created).min() else { return };
+        let Some(champions) = &self.champions else { return false };
+        let Some(games) = lcu.history(champions) else { return false };
+        let Some(oldest) = games.iter().map(|g| g.created).min() else { return false };
         let newest_end = games.iter().map(|g| g.created + chrono::Duration::seconds(g.duration as i64)).max().unwrap_or(oldest);
 
         let mut found = 0;
@@ -285,6 +283,7 @@ impl Checker {
         if found > 0 {
             core.library_changed();
         }
+        false
     }
 }
 

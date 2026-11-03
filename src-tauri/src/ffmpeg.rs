@@ -99,17 +99,23 @@ pub fn video_encoder_args(encoder: &str, preset: &str, bitrate_kbps: u32, fps: u
             a.extend([s("-preset"), s("10"), s("-crf"), s("30"), s("-maxrate"), format!("{b}k"), s("-bufsize"), format!("{}k", b * 2), s("-flags"), s("+cgop")]);
         }
         "nvenc" => {
-            let (p, tune) = match preset {
-                "quality" => ("p7", "hq"),
-                "performance" => ("p2", "hq"),
-                "lowlatency" => ("p4", "ll"),
-                "perf_lowlatency" => ("p2", "ull"),
-                "quality_lowlatency" => ("p6", "ll"),
-                _ => ("p5", "hq"),
+            // B-frames: the third value. The encoder holds frames for them, which on 1080p60 AV1 is
+            // about 170 MB of video memory and 125 MB of RAM more than without; without, files
+            // are about 20% larger at the same quality. High performance trades disk for that.
+            let (p, tune, b_frames) = match preset {
+                "quality" => ("p7", "hq", true),
+                "performance" => ("p2", "hq", false),
+                "lowlatency" => ("p4", "ll", false),
+                "perf_lowlatency" => ("p2", "ull", false),
+                "quality_lowlatency" => ("p6", "ll", false),
+                _ => ("p5", "hq", true),
             };
             // True constant-quality (-b:v 0) capped by maxrate: calm scenes cost little, fights get the bits.
             let cq = if encoder.starts_with("av1") { "33" } else if encoder.starts_with("hevc") { "28" } else { "24" };
             a.extend([s("-preset"), s(p), s("-tune"), s(tune), s("-rc"), s("vbr"), s("-cq"), s(cq)]);
+            if !b_frames {
+                a.extend([s("-bf"), s("0")]);
+            }
             a.extend([s("-b:v"), s("0"), s("-maxrate"), format!("{b}k"), s("-bufsize"), format!("{}k", b * 2)]);
             if !encoder.starts_with("av1") {
                 a.extend([s("-spatial-aq"), s("1")]);

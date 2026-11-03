@@ -491,6 +491,7 @@ export const en = {
       checkingGpu: 'Checking your GPU...',
       notAvailable: (name: string) => `${name} (not available)`,
       preset: 'Preset',
+      presetHint: 'High performance uses the least memory. Files come out about a fifth larger.',
       presetAria: 'Encoder preset',
       presetDefault: 'System default',
       presetQuality: 'High quality',
