@@ -75,13 +75,12 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam:
     DefWindowProcW(hwnd, msg, wparam, lparam)
 }
 
-/// Keyboard (usage 6) and mouse (usage 2) on the generic desktop page, to `hwnd` (or removed).
-fn devices(hwnd: HWND, remove: bool) -> [RAWINPUTDEVICE; 2] {
+/// Keyboard (usage 6) and, for APM, mouse (usage 2) on the generic desktop page, to `hwnd` (or
+/// removed). Without APM only the ultimate key matters, so mouse movement never reaches us.
+fn devices(hwnd: HWND, mouse: bool, remove: bool) -> Vec<RAWINPUTDEVICE> {
     let (flags, target) = if remove { (RIDEV_REMOVE, HWND::default()) } else { (RIDEV_INPUTSINK, hwnd) };
-    [
-        RAWINPUTDEVICE { usUsagePage: 0x01, usUsage: 0x06, dwFlags: flags, hwndTarget: target },
-        RAWINPUTDEVICE { usUsagePage: 0x01, usUsage: 0x02, dwFlags: flags, hwndTarget: target },
-    ]
+    let usages: &[u16] = if mouse { &[0x06, 0x02] } else { &[0x06] };
+    usages.iter().map(|&usage| RAWINPUTDEVICE { usUsagePage: 0x01, usUsage: usage, dwFlags: flags, hwndTarget: target }).collect()
 }
 
 pub struct InputMonitor {
@@ -107,7 +106,8 @@ pub fn vk_from_name(name: &str) -> u32 {
 }
 
 impl InputMonitor {
-    pub fn start(game_hwnd: isize, ult_key: &str) -> InputMonitor {
+    /// `apm`: count every key press and click; otherwise only the ultimate key is watched.
+    pub fn start(game_hwnd: isize, ult_key: &str, apm: bool) -> InputMonitor {
         GAME_HWND.store(game_hwnd, Ordering::Relaxed);
         ULT_VK.store(vk_from_name(ult_key), Ordering::Relaxed);
         ACTIONS.store(0, Ordering::Relaxed);
@@ -128,7 +128,7 @@ impl InputMonitor {
                     return;
                 };
                 let size = std::mem::size_of::<RAWINPUTDEVICE>() as u32;
-                if let Err(e) = RegisterRawInputDevices(&devices(hwnd, false), size) {
+                if let Err(e) = RegisterRawInputDevices(&devices(hwnd, apm, false), size) {
                     log::warn!("APM: raw input unavailable: {e}");
                 }
                 let mut msg = MSG::default();
@@ -139,7 +139,7 @@ impl InputMonitor {
                     // Lets Windows release the input's buffer.
                     DispatchMessageW(&msg);
                 }
-                let _ = RegisterRawInputDevices(&devices(hwnd, true), size);
+                let _ = RegisterRawInputDevices(&devices(hwnd, apm, true), size);
                 let _ = DestroyWindow(hwnd);
             })
             .ok();

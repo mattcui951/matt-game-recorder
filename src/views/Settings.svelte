@@ -363,7 +363,7 @@
       <section class="sec">
         <div class="row"><span>{G.openOnEnd}</span><Toggle label={G.openOnEnd} checked={g.openAppOnEnd} onchange={(v) => set((x) => (x.games.lol.openAppOnEnd = v))} /></div>
         <div class="row"><span>{G.dashboard}</span><Toggle label={G.dashboard} checked={g.dashboardOnSecondary} onchange={(v) => set((x) => (x.games.lol.dashboardOnSecondary = v))} /></div>
-        <div class="row"><span>{G.apm}</span><Toggle label={G.apm} checked={g.collectApm} onchange={(v) => set((x) => (x.games.lol.collectApm = v))} /></div>
+        <div class="row"><span>{G.apm}<small>{G.apmHint}</small></span><Toggle label={G.apm} checked={g.collectApm} onchange={(v) => set((x) => (x.games.lol.collectApm = v))} /></div>
         <div class="row"><span>{G.cursor}</span><Toggle label={G.cursor} checked={g.captureCursor} onchange={(v) => set((x) => (x.games.lol.captureCursor = v))} /></div>
       </section>
 

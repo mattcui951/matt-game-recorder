@@ -631,6 +631,7 @@ export const zhCN: Messages = {
       openOnEnd: '游戏结束时打开 Matt Game Recorder',
       dashboard: '游戏中在副显示器上打开实时仪表盘',
       apm: '统计 APM',
+      apmHint: '统计按键和点击次数，用于 APM 曲线。',
       cursor: '录制鼠标指针',
       captureMode: '录制模式',
       modeManual: '仅手动',

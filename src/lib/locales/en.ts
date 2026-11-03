@@ -601,6 +601,7 @@ export const en = {
       openOnEnd: 'Open Matt Game Recorder when the game ends',
       dashboard: 'Open live dashboard on secondary display while in-game',
       apm: 'Collect APM stats',
+      apmHint: 'Counts your key presses and clicks for the APM graph.',
       cursor: 'Capture mouse cursor',
       captureMode: 'Capture mode',
       modeManual: 'Manual only',

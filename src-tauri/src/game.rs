@@ -375,7 +375,7 @@ fn start_match(core: &Arc<Core>, settings: &Settings, pid: u32, game_pid: Option
     })?;
 
     let needs_input = gs.collect_apm || gs.event_enabled("ultimate");
-    let input = needs_input.then(|| InputMonitor::start(hwnd, &gs.hotkeys.ultimate_key));
+    let input = needs_input.then(|| InputMonitor::start(hwnd, &gs.hotkeys.ultimate_key, gs.collect_apm));
     core.register_hotkeys(true);
     if gs.dashboard_on_secondary && win::monitors().len() > 1 {
         core.open_dashboard(hwnd);

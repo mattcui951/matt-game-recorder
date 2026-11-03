@@ -274,7 +274,7 @@ impl Default for GameSettings {
             enabled: true,
             open_app_on_end: true,
             dashboard_on_secondary: false,
-            collect_apm: true,
+            collect_apm: false,
             capture_cursor: true,
             capture_mode: "match".into(),
             events: EVENT_KINDS.iter().map(|k| (k.to_string(), true)).collect(),
