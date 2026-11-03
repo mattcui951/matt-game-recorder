@@ -9,7 +9,7 @@ use crate::settings::Settings;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
-use tauri::State;
+use tauri::{Emitter, State};
 
 type Core_<'a> = State<'a, Arc<Core>>;
 type Res<T> = Result<T, String>;
@@ -61,6 +61,8 @@ pub fn save_settings(core: Core_, settings: Settings) -> Res<()> {
     let storage_changed = serde_json::to_value(&core.settings().storage).ok() != serde_json::to_value(&settings.storage).ok();
     let language_changed = core.settings().general.language != settings.general.language;
     settings.save().map_err(e)?;
+    // Every window gets the saved settings, so none keeps an older copy it could save back.
+    let _ = core.app.emit("settings", &settings);
     if language_changed {
         crate::i18n::set(&settings.general.language);
         if let (Some(tray), Ok(menu)) = (core.app.tray_by_id("tray"), crate::tray_menu(&core.app)) {
@@ -543,13 +545,14 @@ pub async fn scan_outplayed(core: Core_<'_>, folder: Option<String>) -> Res<crat
 }
 
 #[tauri::command]
-pub fn import_outplayed(core: Core_, folder: String, include_deleted: Option<bool>) -> Res<String> {
-    Ok(crate::import::start(core.inner(), "outplayed", PathBuf::from(folder), false, include_deleted.unwrap_or(false)))
+pub fn import_outplayed(core: Core_, folder: String, include_deleted: Option<bool>, delete_sources: Option<bool>) -> Res<String> {
+    let opts = crate::import::Options { include_deleted: include_deleted.unwrap_or(false), delete_sources: delete_sources.unwrap_or(false) };
+    Ok(crate::import::start(core.inner(), "outplayed", PathBuf::from(folder), false, opts))
 }
 
 #[tauri::command]
 pub fn import_library(core: Core_, folder: String) -> Res<String> {
-    Ok(crate::import::start(core.inner(), "library", PathBuf::from(folder), false, false))
+    Ok(crate::import::start(core.inner(), "library", PathBuf::from(folder), false, Default::default()))
 }
 
 #[tauri::command]

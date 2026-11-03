@@ -19,14 +19,21 @@ static CORE: OnceLock<Arc<Core>> = OnceLock::new();
 
 /// Debug builds: `MGR_DEVTOOLS_PORT=9333` opens the webviews to DevTools-protocol test scripts.
 /// Every window must use the same arguments, since they share one WebView2 environment.
+/// Debug builds get a WebView data folder of their own, so a test run never changes what the
+/// installed app's windows remember; and the DevTools port when `MGR_DEVTOOLS_PORT` is set.
 fn with_debug_port<'a>(b: WebviewWindowBuilder<'a, tauri::Wry, AppHandle>) -> WebviewWindowBuilder<'a, tauri::Wry, AppHandle> {
     #[cfg(debug_assertions)]
-    if let Ok(port) = std::env::var("MGR_DEVTOOLS_PORT") {
-        // Keep wry's defaults; setting arguments replaces them.
-        return b.additional_browser_args(&format!(
-            "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --remote-debugging-port={port}"
-        ));
+    {
+        let b = b.data_directory(crate::paths::config_dir().join("webview-dev"));
+        if let Ok(port) = std::env::var("MGR_DEVTOOLS_PORT") {
+            // Keep wry's defaults; setting arguments replaces them.
+            return b.additional_browser_args(&format!(
+                "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --remote-debugging-port={port}"
+            ));
+        }
+        b
     }
+    #[cfg(not(debug_assertions))]
     b
 }
 

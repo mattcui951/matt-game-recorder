@@ -2,7 +2,7 @@ import { emit, listen } from '@tauri-apps/api/event';
 import { api } from './api';
 import { activeThemeId, applyAppearance, broadcastAppearance, DEFAULT_APPEARANCE, themeColors } from './appearance';
 import { championsZh } from './format.svelte';
-import { applyLanguage, i18n, t, type LanguageSetting } from './i18n.svelte';
+import { applyLanguage, i18n, resolveLanguage, t, type LanguageSetting } from './i18n.svelte';
 import type { Appearance, CpuAssist, DiskInfo, Job, Recording, Session, Settings, Snapshot, Status, UpdateState } from './types';
 
 export type Route =
@@ -61,18 +61,13 @@ export async function installUpdate() {
   }
 }
 
-function readPref<T extends string>(key: string, fallback: T): T {
-  try {
-    return (localStorage.getItem(key) as T) ?? fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-/** Per-viewer conveniences, remembered in localStorage when available. */
+/**
+ * View state. `libraryView` and `showApm` are remembered in settings (`settings.ui`, saved with
+ * the rest when they change); the library date filter lasts while the app runs.
+ */
 export const ui = $state({
-  libraryView: readPref<'table' | 'grid'>('mgr.libraryView', 'table'),
-  showApm: readPref<'on' | 'off'>('mgr.showApm', 'off') === 'on',
+  libraryView: 'table' as 'table' | 'grid',
+  showApm: false,
   // Library date filter; kept while you open a match and come back, not across restarts.
   libraryYear: null as number | null,
   libraryMonth: null as number | null,
@@ -81,14 +76,22 @@ export const ui = $state({
 
 $effect.root(() => {
   $effect(() => {
-    try {
-      localStorage.setItem('mgr.libraryView', ui.libraryView);
-      localStorage.setItem('mgr.showApm', ui.showApm ? 'on' : 'off');
-    } catch {
-      /* storage unavailable */
+    const view = ui.libraryView;
+    const apm = ui.showApm;
+    const saved = app.settings?.ui;
+    if (saved && (saved.libraryView !== view || saved.showApm !== apm)) {
+      updateSettings((s) => {
+        s.ui.libraryView = view;
+        s.ui.showApm = apm;
+      });
     }
   });
 });
+
+/** Change a remembered view choice (`settings.ui`). */
+export function setUiPref<K extends keyof Settings['ui']>(key: K, value: Settings['ui'][K]) {
+  if (app.settings && JSON.stringify(app.settings.ui[key]) !== JSON.stringify(value)) updateSettings((s) => (s.ui[key] = value));
+}
 
 let toastId = 0;
 export function toast(text: string, tone: Toast['tone'] = 'info', action?: Toast['action']) {
@@ -161,11 +164,15 @@ export async function saveSettings(next: Settings) {
 
 /** Mutate settings in place and persist (debounced so sliders do not spam disk). */
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
+/** A change of ours is waiting to be saved: settings broadcast meanwhile are older than it. */
+let savePending = false;
 export function updateSettings(mut: (s: Settings) => void) {
   if (!app.settings) return;
   mut(app.settings);
   clearTimeout(saveTimer);
+  savePending = true;
   saveTimer = setTimeout(() => {
+    savePending = false;
     if (app.settings) api.saveSettings($state.snapshot(app.settings) as Settings).catch((e) => toast(t.common.settingsNotSaved(errorText(e)), 'error'));
   }, 250);
 }
@@ -214,6 +221,8 @@ export async function init() {
   const boot = await api.bootstrap();
   boot.settings.appearance = { ...DEFAULT_APPEARANCE, ...(boot.settings.appearance ?? {}) };
   app.settings = boot.settings;
+  ui.libraryView = boot.settings.ui.libraryView;
+  ui.showApm = boot.settings.ui.showApm;
   i18n.system = boot.systemLanguage;
   useLanguage(boot.settings.general.language);
   applyAppearance(boot.settings.appearance);
@@ -247,6 +256,16 @@ export async function init() {
   await listen<Appearance>('appearance', (e) => {
     if (app.settings) app.settings.appearance = e.payload;
     applyAppearance(e.payload);
+  });
+  // Saved by any window: everyone works from the same settings.
+  await listen<Settings>('settings', (e) => {
+    if (savePending) return;
+    const next = e.payload;
+    next.appearance = { ...DEFAULT_APPEARANCE, ...(next.appearance ?? {}) };
+    app.settings = next;
+    ui.libraryView = next.ui.libraryView;
+    ui.showApm = next.ui.showApm;
+    if (resolveLanguage(next.general.language) !== i18n.locale) useLanguage(next.general.language);
   });
   await listen<UpdateState>('update', (e) => {
     app.update = e.payload;

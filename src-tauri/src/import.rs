@@ -654,6 +654,10 @@ pub struct OutplayedScan {
     pub already_imported: usize,
     /// Imported earlier but deleted from the library since (skipped unless re-import is chosen).
     pub deleted_after_import: usize,
+    /// Free space on the media folder's drive.
+    pub free_bytes: u64,
+    /// The Outplayed folder is on the media folder's drive, so deleting originals frees room there.
+    pub same_drive: bool,
 }
 
 fn guess_outplayed_folder(matches: &[OpMatch]) -> Option<PathBuf> {
@@ -665,11 +669,23 @@ fn guess_outplayed_folder(matches: &[OpMatch]) -> Option<PathBuf> {
 
 pub fn scan_outplayed(core: &Core, folder: Option<&str>) -> OutplayedScan {
     let matches = read_outplayed();
+    // Debug builds: a stand-in Outplayed folder for testing.
+    #[cfg(debug_assertions)]
+    let folder = folder.map(str::to_string).or_else(|| std::env::var("MGR_FAKE_OUTPLAYED").ok());
+    #[cfg(debug_assertions)]
+    let folder = folder.as_deref();
     let folder = folder.map(PathBuf::from).or_else(|| guess_outplayed_folder(&matches)).or_else(|| {
         let v = dirs::video_dir()?.join("Overwolf").join("Outplayed");
         v.exists().then_some(v)
     });
-    let Some(folder) = folder else { return OutplayedScan { folder: None, files: 0, bytes: 0, with_events: 0, already_imported: 0, deleted_after_import: 0 } };
+    let root = core.library.root();
+    let free_bytes = crate::win::disk_space(&root).map_or(0, |(free, _)| free);
+    // Debug builds: pretend the drive is this full (GB free), to test the low-space flow.
+    #[cfg(debug_assertions)]
+    let free_bytes = std::env::var("MGR_FAKE_FREE_GB").ok().and_then(|v| v.parse::<u64>().ok()).map_or(free_bytes, |gb| gb << 30);
+    let Some(folder) = folder else {
+        return OutplayedScan { folder: None, files: 0, bytes: 0, with_events: 0, already_imported: 0, deleted_after_import: 0, free_bytes, same_drive: false };
+    };
     let files = walk_mp4(&folder);
     let known: HashSet<String> = matches.iter().flat_map(|m| &m.medias).filter(|md| !md.events.is_empty()).map(|md| md.path.to_lowercase()).collect();
     let done = core.library.imported_sources();
@@ -692,6 +708,8 @@ pub fn scan_outplayed(core: &Core, folder: Option<&str>) -> OutplayedScan {
         with_events: files.iter().filter(|f| known.contains(&f.to_string_lossy().to_lowercase())).count(),
         already_imported: already,
         deleted_after_import: deleted,
+        free_bytes,
+        same_drive: crate::win::same_volume(&folder, &root),
     }
 }
 
@@ -752,6 +770,9 @@ struct Run<'a> {
     state: Mutex<RunState>,
     /// A worker hit a fatal error; the other stops too.
     halt: AtomicBool,
+    /// Delete each Outplayed original once its conversion is saved and checked (the user asked
+    /// for this to free space on a full drive).
+    delete_sources: bool,
 }
 
 impl Run<'_> {
@@ -922,7 +943,7 @@ impl Run<'_> {
         match result {
             Ok(true) => {
                 let mut s = self.state.lock();
-                let finalize = || -> Result<()> {
+                let finalize = || -> Result<f64> {
                     std::fs::rename(&tmp, &out).context(tr!("could not finalize the converted video", "无法完成转换后的视频"))?;
                     let mut r = core.library.add_file(&session, &item.kind, &title, &out, item.events.clone(), vec![], None)?;
                     r.imported_from = Some(item.src.to_string_lossy().into_owned());
@@ -931,14 +952,17 @@ impl Run<'_> {
                     crate::ledger::record(&item.fp, &item.src, &r.id);
                     crate::ledger::save();
                     let _ = core.library.renumber_matches(&session.game, session.started_at.date_naive());
-                    Ok(())
+                    Ok(r.duration)
                 };
                 let done = finalize();
                 release(&mut s);
                 s.done_bytes += item.size;
-                done?;
+                let duration = done?;
                 s.imported += 1;
                 drop(s);
+                if self.delete_sources {
+                    delete_original(&item.src, duration);
+                }
                 if let Some(key) = session.champion_key.clone() {
                     crate::lol::art::ensure(&key);
                 }
@@ -1028,21 +1052,44 @@ fn pending_path() -> PathBuf {
     paths::config_dir().join("pending-import.json")
 }
 
-fn remember(kind: &str, folder: &Path, paused: bool, include_deleted: bool) {
-    let v = serde_json::json!({ "kind": kind, "folder": folder, "paused": paused, "includeDeleted": include_deleted });
+fn remember(kind: &str, folder: &Path, paused: bool, opts: Options) {
+    let v = serde_json::json!({ "kind": kind, "folder": folder, "paused": paused, "includeDeleted": opts.include_deleted, "deleteSources": opts.delete_sources });
     let _ = std::fs::write(pending_path(), v.to_string());
+}
+
+/// Choices for an Outplayed import.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Options {
+    /// Re-import videos whose earlier import was deleted from the library.
+    pub include_deleted: bool,
+    /// Delete each original once it is imported (asked for when the drive is too full).
+    pub delete_sources: bool,
+}
+
+/// After a successful conversion: delete the Outplayed original, but only when the converted
+/// video is as long as it (a short or unreadable copy keeps the original).
+fn delete_original(src: &Path, converted: f64) {
+    let original = crate::ffmpeg::probe(src).map(|p| p.duration).unwrap_or(0.0);
+    if original <= 0.0 || converted + (original * 0.02).max(2.0) < original {
+        log::warn!("kept {}: converted copy is {converted:.1}s of {original:.1}s", src.display());
+        return;
+    }
+    match std::fs::remove_file(src) {
+        Ok(()) => log::info!("deleted the imported original {}", src.display()),
+        Err(e) => log::warn!("could not delete the imported original {}: {e}", src.display()),
+    }
 }
 
 /// Keep the pause state of the pending import, so a paused import stays paused after a restart.
 pub fn set_pending_paused(paused: bool) {
     if let Some(p) = pending() {
-        remember(&p.kind, &p.folder, paused, p.include_deleted);
+        remember(&p.kind, &p.folder, paused, p.options);
     }
 }
 
 /// Start an import job. `kind` is "outplayed" or "library". `include_deleted` re-imports
 /// Outplayed videos whose earlier import was deleted from the library.
-pub fn start(core: &Arc<Core>, kind: &str, folder: PathBuf, paused: bool, include_deleted: bool) -> String {
+pub fn start(core: &Arc<Core>, kind: &str, folder: PathBuf, paused: bool, opts: Options) -> String {
     let c = core.clone();
     let (tag, title, outplayed) = if kind == "library" {
         ("library", tr!("Importing recordings", "正在导入录像"), false)
@@ -1051,7 +1098,7 @@ pub fn start(core: &Arc<Core>, kind: &str, folder: PathBuf, paused: bool, includ
     };
     core.jobs.spawn_with(&core.app, "import", tag, &title, true, paused, move |ctx| {
         if outplayed {
-            import_outplayed(&c, &folder, ctx, include_deleted)
+            import_outplayed(&c, &folder, ctx, opts)
         } else {
             import_library(&c, &folder, ctx)
         }
@@ -1068,7 +1115,7 @@ pub struct Pending {
     pub kind: String,
     pub folder: PathBuf,
     pub paused: bool,
-    pub include_deleted: bool,
+    pub options: Options,
 }
 
 /// An import interrupted by a restart or crash.
@@ -1078,13 +1125,16 @@ pub fn pending() -> Option<Pending> {
         kind: v.get("kind")?.as_str()?.to_string(),
         folder: PathBuf::from(v.get("folder")?.as_str()?),
         paused: v.get("paused").and_then(Value::as_bool).unwrap_or(false),
-        include_deleted: v.get("includeDeleted").and_then(Value::as_bool).unwrap_or(false),
+        options: Options {
+            include_deleted: v.get("includeDeleted").and_then(Value::as_bool).unwrap_or(false),
+            delete_sources: v.get("deleteSources").and_then(Value::as_bool).unwrap_or(false),
+        },
     })
 }
 
-pub fn import_outplayed(core: &Arc<Core>, folder: &Path, ctx: &JobCtx, include_deleted: bool) -> Result<Option<String>> {
-    remember("outplayed", folder, ctx.is_paused(), include_deleted);
-    let result = import_outplayed_inner(core, folder, ctx, include_deleted);
+pub fn import_outplayed(core: &Arc<Core>, folder: &Path, ctx: &JobCtx, opts: Options) -> Result<Option<String>> {
+    remember("outplayed", folder, ctx.is_paused(), opts);
+    let result = import_outplayed_inner(core, folder, ctx, opts.include_deleted, opts.delete_sources);
     forget();
     // Drop sessions created for videos that never finished (cancel, error, full disk).
     if core.library.recover_partials() > 0 || result.is_err() {
@@ -1132,7 +1182,7 @@ fn backfill_ledger(core: &Core, ctx: &JobCtx) {
     crate::ledger::save();
 }
 
-fn import_outplayed_inner(core: &Arc<Core>, folder: &Path, ctx: &JobCtx, include_deleted: bool) -> Result<Option<String>> {
+fn import_outplayed_inner(core: &Arc<Core>, folder: &Path, ctx: &JobCtx, include_deleted: bool, delete_sources: bool) -> Result<Option<String>> {
     if !folder.exists() {
         let f = folder.display();
         bail!(tr!("Folder not found: {f}", "找不到文件夹：{f}"));
@@ -1243,6 +1293,7 @@ fn import_outplayed_inner(core: &Arc<Core>, folder: &Path, ctx: &JobCtx, include
         queue: Mutex::new(Queue { items: plan.into_iter().enumerate().collect(), cpu_busy: false, cpu_failed: HashSet::new() }),
         state: Mutex::new(RunState { done_bytes: skipped_bytes, ..Default::default() }),
         halt: AtomicBool::new(false),
+        delete_sources,
     };
     // The GPU converts the whole time. With CPU help on, the processor converts another video
     // alongside it; turning help off hands that video back to the GPU.
@@ -1276,10 +1327,20 @@ fn import_outplayed_inner(core: &Arc<Core>, folder: &Path, ctx: &JobCtx, include
 // Another Matt Game Recorder library
 
 pub fn import_library(core: &Arc<Core>, folder: &Path, ctx: &JobCtx) -> Result<Option<String>> {
-    remember("library", folder, ctx.is_paused(), false);
+    remember("library", folder, ctx.is_paused(), Options::default());
     let result = import_library_inner(core, folder, ctx);
     forget();
     result
+}
+
+/// A session folder still holds a recording (a sidecar other than the session's own).
+fn has_recordings(dir: &Path) -> bool {
+    std::fs::read_dir(dir).map_or(true, |rd| {
+        rd.flatten().any(|e| {
+            let n = e.file_name().to_string_lossy().to_string();
+            n.ends_with(".mgr.json") && n != SESSION_FILE
+        })
+    })
 }
 
 /// Fingerprints of every video already in the library (cached after the first run).
@@ -1389,6 +1450,8 @@ fn import_library_inner(core: &Arc<Core>, folder: &Path, ctx: &JobCtx) -> Result
     let count: usize = work.iter().map(|(_, _, c)| c.len()).sum();
     let mut done = 0u64;
     let mut imported = 0usize;
+    // On the same drive the files move (a rename: instant, no extra space); otherwise they copy.
+    let moving = crate::win::same_volume(folder, &root);
     for (session, src_dir, copies) in work {
         if ctx.cancelled() {
             bail!("cancelled");
@@ -1413,9 +1476,20 @@ fn import_library_inner(core: &Arc<Core>, folder: &Path, ctx: &JobCtx) -> Result
         for c in copies {
             for f in &c.files {
                 let from = c.dir.join(f);
-                std::fs::copy(&from, dest.join(f)).with_context(|| format!("copying {}", from.display()))?;
-                done += from.metadata().map(|m| m.len()).unwrap_or(0);
-                ctx.update(done as f64 / total as f64, &tr!("{imported} of {count} copied", "已复制 {imported}/{count}"));
+                let size = from.metadata().map(|m| m.len()).unwrap_or(0);
+                if !(moving && std::fs::rename(&from, dest.join(f)).is_ok()) {
+                    std::fs::copy(&from, dest.join(f)).with_context(|| format!("copying {}", from.display()))?;
+                }
+                done += size;
+                if moving {
+                    ctx.update(done as f64 / total as f64, &tr!("{imported} of {count} moved", "已移动 {imported}/{count}"));
+                } else {
+                    ctx.update(done as f64 / total as f64, &tr!("{imported} of {count} copied", "已复制 {imported}/{count}"));
+                }
+            }
+            // A moved recording leaves the other folder entirely (its sidecar goes too).
+            if moving && !c.dir.join(&c.sidecar.file).exists() {
+                let _ = std::fs::remove_file(crate::library::sidecar_for(&c.dir, &c.sidecar.file));
             }
             let mut rec = c.sidecar;
             rec.dir = dest.clone();
@@ -1431,6 +1505,11 @@ fn import_library_inner(core: &Arc<Core>, folder: &Path, ctx: &JobCtx) -> Result
             imported += 1;
         }
         core.library_changed();
+        // A session folder whose recordings all moved goes too.
+        if moving && !has_recordings(&src_dir) {
+            let _ = std::fs::remove_file(src_dir.join(SESSION_FILE));
+            let _ = std::fs::remove_dir(&src_dir);
+        }
     }
     core.library.reload();
     let s = if imported == 1 { "" } else { "s" };

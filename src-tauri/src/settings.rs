@@ -372,6 +372,7 @@ pub struct CustomTheme {
 #[serde(default, rename_all = "camelCase")]
 pub struct Settings {
     pub general: General,
+    pub ui: UiPrefs,
     pub video: Video,
     pub audio: Audio,
     pub webcam: Webcam,
@@ -380,6 +381,26 @@ pub struct Settings {
     pub notifications: Notifications,
     pub games: Games,
     pub appearance: Appearance,
+}
+
+/// What the windows remember between runs: views and filters. Kept here rather than in the
+/// WebView's storage so updates, reinstalls and other windows never lose or overwrite them.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct UiPrefs {
+    /// table | grid
+    pub library_view: String,
+    pub show_apm: bool,
+    /// Player volume, 0-1.
+    pub volume: f64,
+    /// Event kinds the match timeline shows; empty shows all.
+    pub timeline_filter: Vec<String>,
+}
+
+impl Default for UiPrefs {
+    fn default() -> Self {
+        Self { library_view: "table".into(), show_apm: false, volume: 1.0, timeline_filter: Vec::new() }
+    }
 }
 
 impl Settings {

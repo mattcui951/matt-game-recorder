@@ -14,6 +14,10 @@
   let scanning = $state(true);
   let folder = $state('');
   let includeDeleted = $state(false);
+  // Delete each Outplayed original once imported: offered only when the drive is too full, and
+  // only after the user confirms in the dialog.
+  let deleteSources = $state(false);
+  let confirmDialog = $state<HTMLDialogElement>();
   const running = $derived(Object.values(app.jobs).some((j) => j.kind === 'import' && j.state === 'running'));
 
   async function rescan(f?: string) {
@@ -39,7 +43,7 @@
   }
   async function startOutplayed() {
     try {
-      await api.importOutplayed(folder, includeDeleted);
+      await api.importOutplayed(folder, includeDeleted, deleteSources && short);
       toast(t.importPanel.started, 'info');
       onstarted?.();
     } catch (e) {
@@ -60,6 +64,19 @@
   const remaining = $derived(scan ? scan.files - scan.alreadyImported - (includeDeleted ? 0 : scan.deletedAfterImport) : 0);
   // AV1 at this app's settings came out ~43% smaller than Outplayed's H.264 in testing.
   const estimate = $derived(scan ? scan.bytes * 0.57 * (remaining / Math.max(1, scan.files)) : 0);
+  // Room for the converted videos, plus the margin the import keeps free.
+  const MARGIN = 2 * 1024 ** 3;
+  const short = $derived(Boolean(scan && remaining > 0 && estimate + MARGIN > scan.freeBytes));
+  function toggleDelete(e: Event) {
+    const box = e.currentTarget as HTMLInputElement;
+    if (box.checked) {
+      // Not on until confirmed.
+      box.checked = false;
+      confirmDialog?.showModal();
+    } else {
+      deleteSources = false;
+    }
+  }
 </script>
 
 <div class="imp">
@@ -84,8 +101,23 @@
           <span>{t.importPanel.bringBack(scan.deletedAfterImport)}</span>
         </label>
       {/if}
+      {#if short && scan}
+        <div class="warn" role="alert">
+          <strong>{t.importPanel.lowSpace}</strong>
+          <span>{t.importPanel.lowSpaceText(bytes(estimate), bytes(scan.freeBytes))}</span>
+          {#if scan.sameDrive}
+            <label class="opt danger">
+              <input type="checkbox" checked={deleteSources} onchange={toggleDelete} />
+              <span>{t.importPanel.deleteAsYouGo}</span>
+            </label>
+            {#if deleteSources}<span class="on-note">{t.importPanel.deleteOn}</span>{/if}
+          {:else}
+            <span>{t.importPanel.otherDrive}</span>
+          {/if}
+        </div>
+      {/if}
       <p class="note">{t.importPanel.dupNote}</p>
-      <p class="note">{t.importPanel.convertNote}</p>
+      <p class="note">{deleteSources && short ? t.importPanel.convertNoteDelete : t.importPanel.convertNote}</p>
       {#if remaining > 0}<CpuAssistToggle />{/if}
       <button class="btn primary" disabled={running || remaining === 0} onclick={startOutplayed}>
         <Icon name="export" size={15} />{remaining === 0 ? t.importPanel.everythingImported : t.importPanel.importN(remaining)}
@@ -95,10 +127,21 @@
   <section>
     <div class="head"><span class="title">{t.importPanel.fromLibrary}</span></div>
     <p class="note">{t.importPanel.libraryNote}</p>
+    <p class="note">{t.importPanel.moveNote}</p>
     <button class="btn" disabled={running} onclick={startLibrary}><Icon name="folder" size={15} />{t.importPanel.chooseAndImport}</button>
   </section>
   {#if running}<p class="dim">{t.importPanel.running}</p>{/if}
 </div>
+
+<dialog bind:this={confirmDialog} aria-labelledby="del-q">
+  <h2 id="del-q">{t.importPanel.deleteAsk}</h2>
+  <p>{t.importPanel.deleteAskBody(folder)}</p>
+  <p class="dim">{t.importPanel.deleteAskNote}</p>
+  <div class="btns">
+    <button class="btn ghost sm" onclick={() => confirmDialog?.close()}>{t.common.cancel}</button>
+    <button class="btn danger solid sm" onclick={() => ((deleteSources = true), confirmDialog?.close())}>{t.importPanel.deleteYes}</button>
+  </div>
+</dialog>
 
 <style>
   .imp {
@@ -173,5 +216,62 @@
     accent-color: var(--you);
     width: 15px;
     height: 15px;
+  }
+  .warn {
+    display: grid;
+    gap: 6px;
+    padding: 10px 12px;
+    border-radius: var(--r-md);
+    background: color-mix(in oklab, var(--warn) 12%, var(--panel-2));
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--warn) 45%, transparent);
+    font-size: 12.5px;
+    color: var(--text-2);
+  }
+  .warn strong {
+    color: var(--warn);
+    font-weight: 600;
+  }
+  .opt.danger input {
+    accent-color: var(--death);
+  }
+  .on-note {
+    color: var(--death);
+    font-weight: 600;
+  }
+  dialog {
+    width: min(420px, calc(100vw - 32px));
+    padding: 20px 22px 18px;
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid var(--seam-strong);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow-pop);
+    outline: none;
+  }
+  dialog::backdrop {
+    background: var(--backdrop);
+  }
+  h2 {
+    margin: 0 0 10px;
+    font-family: var(--font-score);
+    font-weight: 600;
+    font-size: 16px;
+  }
+  dialog p {
+    margin: 0 0 8px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-2);
+    word-break: break-word;
+  }
+  dialog p.dim {
+    font-size: 12.5px;
+    color: var(--text-3);
+  }
+  .btns {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 16px;
   }
 </style>

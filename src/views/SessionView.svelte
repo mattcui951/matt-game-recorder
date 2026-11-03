@@ -6,7 +6,7 @@
   import Slider from '../components/Slider.svelte';
   import Timeline from '../components/Timeline.svelte';
   import { api } from '../lib/api';
-  import { app, artSrc, back, cacheSrc, errorText, go, mediaSrc, recordingsOf, sessionById, toast, ui } from '../lib/state.svelte';
+  import { app, artSrc, back, cacheSrc, errorText, go, mediaSrc, recordingsOf, sessionById, setUiPref, toast, ui } from '../lib/state.svelte';
   import { championName, clock, displayTitle, modeName, parseClock } from '../lib/format.svelte';
   import { eventLabel, FILTER_KINDS, filterKey, meta } from '../lib/events';
   import { t } from '../lib/i18n.svelte';
@@ -44,12 +44,16 @@
 
   // Filter: nothing picked shows everything; pick one or more kinds to see only those, on the
   // timeline and in the moment list alike.
-  let only = $state<string[]>([]);
+  // Remembered across matches and restarts (settings.ui.timelineFilter). Kinds a match does not
+  // have are ignored there; picking none of what it has shows everything.
+  let only = $state<string[]>([...(app.settings?.ui.timelineFilter ?? [])]);
+  $effect(() => setUiPref('timelineFilter', [...only]));
   const counts = $derived(
     (rec?.events ?? []).reduce<Record<string, number>>((c, e) => ((c[filterKey(e)] = (c[filterKey(e)] ?? 0) + 1), c), {}),
   );
   const kindsHere = $derived(FILTER_KINDS.filter((k) => counts[k]));
-  const shown = $derived((rec?.events ?? []).filter((e) => !only.length || only.includes(filterKey(e))));
+  const picked = $derived(only.filter((k) => counts[k]));
+  const shown = $derived((rec?.events ?? []).filter((e) => !picked.length || picked.includes(filterKey(e))));
   const pick = (k: string) => (only = only.includes(k) ? only.filter((x) => x !== k) : [...only, k]);
   const current = $derived(rec?.events.findLast((e) => e.t - e.before <= time + 0.25 && e.t + e.after >= time - 0.25));
 
@@ -69,7 +73,6 @@
     mode = 'view';
     selection = [];
     zoom = 1;
-    only = [];
   });
 
   function startTrim() {
@@ -269,7 +272,7 @@
                 </div>
               {:else if kindsHere.length}
                 <div class="filters" role="group" aria-label={t.session.filter}>
-                  <button class="fchip all" class:on={!only.length} aria-pressed={!only.length} onclick={() => (only = [])}>{t.session.tabAll}<span class="num n">{rec.events.length}</span></button>
+                  <button class="fchip all" class:on={!picked.length} aria-pressed={!picked.length} onclick={() => (only = [])}>{t.session.tabAll}<span class="num n">{rec.events.length}</span></button>
                   {#each kindsHere as k (k)}
                     <button class="fchip" class:on={only.includes(k)} aria-pressed={only.includes(k)} style="--c:{meta(k).color}" onclick={() => pick(k)}>
                       <Icon name={meta(k).icon} size={13} /><span>{t.filters[k] ?? meta(k).label}</span><span class="num n">{counts[k]}</span>

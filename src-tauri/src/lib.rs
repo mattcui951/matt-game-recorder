@@ -65,11 +65,12 @@ fn init_logging() {
 fn handle_cli(core: &std::sync::Arc<core::Core>, args: &[String]) -> bool {
     let pos = |flag: &str| args.iter().position(|a| a == flag).and_then(|i| args.get(i + 1)).cloned();
     if let Some(folder) = pos("--import-outplayed") {
-        import::start(core, "outplayed", folder.into(), false, args.iter().any(|a| a == "--include-deleted"));
+        let opts = import::Options { include_deleted: args.iter().any(|a| a == "--include-deleted"), delete_sources: false };
+        import::start(core, "outplayed", folder.into(), false, opts);
         return true;
     }
     if let Some(folder) = pos("--import-library") {
-        import::start(core, "library", folder.into(), false, false);
+        import::start(core, "library", folder.into(), false, Default::default());
         return true;
     }
     false
@@ -79,6 +80,10 @@ pub fn run() {
     init_logging();
     // After an update the installer restarts us with the old arguments; show the window anyway.
     let just_updated = update::take_marker();
+    {
+        let s = settings::Settings::load();
+        log::info!("settings: language {} ({}), theme {}", i18n::resolve(&s.general.language), s.general.language, s.appearance.theme);
+    }
     let started_minimized = std::env::args().any(|a| a == "--minimized") && !just_updated;
 
     let app = tauri::Builder::default()
@@ -196,7 +201,7 @@ pub fn run() {
                         // Continue an import that a restart or crash interrupted.
                         if let Some(p) = import::pending() {
                             log::info!("resuming {} import from {}{}", p.kind, p.folder.display(), if p.paused { " (paused)" } else { "" });
-                            import::start(&core, &p.kind, p.folder, p.paused, p.include_deleted);
+                            import::start(&core, &p.kind, p.folder, p.paused, p.options);
                         }
                     }
                     // Warm the encoder probe so Settings opens instantly, then tidy storage.

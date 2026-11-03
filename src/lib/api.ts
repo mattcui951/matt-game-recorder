@@ -39,7 +39,7 @@ export const api = {
   createBackup: (dest: string) => invoke<string>('create_backup', { dest }),
   quitApp: () => invoke<void>('quit_app'),
   scanOutplayed: (folder?: string) => invoke<OutplayedScan>('scan_outplayed', { folder: folder ?? null }),
-  importOutplayed: (folder: string, includeDeleted = false) => invoke<string>('import_outplayed', { folder, includeDeleted }),
+  importOutplayed: (folder: string, includeDeleted = false, deleteSources = false) => invoke<string>('import_outplayed', { folder, includeDeleted, deleteSources }),
   importLibrary: (folder: string) => invoke<string>('import_library', { folder }),
   listJobs: () => invoke<Job[]>('list_jobs'),
   pauseJob: (id: string, paused: boolean) => invoke<void>('pause_job', { id, paused }),

@@ -43,6 +43,12 @@ export type Appearance = {
 
 export type Settings = {
   appearance: Appearance;
+  ui: {
+    libraryView: 'table' | 'grid';
+    showApm: boolean;
+    volume: number;
+    timelineFilter: string[];
+  };
   general: {
     captureOwnWindows: boolean;
     captureNotifications: boolean;
@@ -213,4 +219,15 @@ export type Project = {
   clips: ProjectClip[];
 };
 
-export type OutplayedScan = { folder?: string | null; files: number; bytes: number; withEvents: number; alreadyImported: number; deletedAfterImport: number };
+export type OutplayedScan = {
+  folder?: string | null;
+  files: number;
+  bytes: number;
+  withEvents: number;
+  alreadyImported: number;
+  deletedAfterImport: number;
+  /** Free space on the media folder's drive. */
+  freeBytes: number;
+  /** The Outplayed folder is on the media folder's drive. */
+  sameDrive: boolean;
+};

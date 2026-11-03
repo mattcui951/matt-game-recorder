@@ -242,6 +242,25 @@ pub fn disk_space(path: &std::path::Path) -> Option<(u64, u64)> {
     Some((free, total))
 }
 
+/// The volume a path is on ("C:\\", or a mount point), lowercased; `None` if unknown.
+pub fn volume_of(path: &std::path::Path) -> Option<String> {
+    use windows::Win32::Storage::FileSystem::GetVolumePathNameW;
+    let mut probe = path.to_path_buf();
+    while !probe.exists() {
+        probe = probe.parent()?.to_path_buf();
+    }
+    let wide: Vec<u16> = probe.as_os_str().encode_wide_null();
+    let mut buf = [0u16; 512];
+    unsafe { GetVolumePathNameW(PCWSTR(wide.as_ptr()), &mut buf).ok()? };
+    let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+    Some(String::from_utf16_lossy(&buf[..len]).to_lowercase())
+}
+
+/// Both paths are on the same volume, so a file moves between them by renaming (instantly).
+pub fn same_volume(a: &std::path::Path, b: &std::path::Path) -> bool {
+    matches!((volume_of(a), volume_of(b)), (Some(x), Some(y)) if x == y)
+}
+
 trait EncodeWideNull {
     fn encode_wide_null(&self) -> Vec<u16>;
 }

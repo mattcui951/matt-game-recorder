@@ -55,9 +55,9 @@ fn dev_api(core: &std::sync::Arc<crate::core::Core>, what: &str, query: &str) ->
     };
     let started = |id: String| serde_json::to_value(serde_json::json!({ "job": id }));
     let body = match what {
-        "import-outplayed" => started(crate::import::start(core, "outplayed", folder(), false, false)),
-        "import-outplayed-all" => started(crate::import::start(core, "outplayed", folder(), false, true)),
-        "import-library" => started(crate::import::start(core, "library", folder(), false, false)),
+        "import-outplayed" => started(crate::import::start(core, "outplayed", folder(), false, Default::default())),
+        "import-outplayed-all" => started(crate::import::start(core, "outplayed", folder(), false, crate::import::Options { include_deleted: true, delete_sources: false })),
+        "import-library" => started(crate::import::start(core, "library", folder(), false, Default::default())),
         "pause" | "resume" => {
             let kind = core.jobs.set_paused(&core.app, query, what == "pause");
             if kind.as_deref() == Some("import") {

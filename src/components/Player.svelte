@@ -2,6 +2,7 @@
   import Icon from './Icon.svelte';
   import { clock } from '../lib/format.svelte';
   import { t } from '../lib/i18n.svelte';
+  import { app, setUiPref } from '../lib/state.svelte';
 
   let {
     src,
@@ -15,27 +16,15 @@
 
   let video = $state<HTMLVideoElement>();
   let box = $state<HTMLDivElement>();
-  let volume = $state(readNum('mgr.volume', 1));
+  let volume = $state(app.settings?.ui.volume ?? 1);
   let muted = $state(false);
   let rate = $state(1);
   let showControls = $state(true);
   let hideTimer: ReturnType<typeof setTimeout> | undefined;
 
-  function readNum(key: string, fallback: number): number {
-    try {
-      const v = Number(localStorage.getItem(key));
-      return localStorage.getItem(key) === null || isNaN(v) ? fallback : v;
-    } catch {
-      return fallback;
-    }
-  }
-
+  // Remembered in settings (saved shortly after the slider stops).
   $effect(() => {
-    try {
-      localStorage.setItem('mgr.volume', String(volume));
-    } catch {
-      /* ignore */
-    }
+    setUiPref('volume', Math.round(volume * 100) / 100);
   });
 
   // External seek requests (timeline clicks, moment list).
