@@ -22,7 +22,7 @@ use std::path::{Path, PathBuf};
 pub const DELETED_DIR: &str = "Recently Deleted";
 pub const SESSION_FILE: &str = "session.mgr.json";
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecEvent {
     /// Seconds into the recording.
@@ -34,6 +34,68 @@ pub struct RecEvent {
     /// Capture window around `t`.
     pub before: f64,
     pub after: f64,
+    /// The other champion (Data Dragon key): who was killed, or who killed you.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub champion: Option<String>,
+    /// Multikills: seconds from the streak's first kill (`t`) to its last.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub span: Option<f64>,
+}
+
+/// One event per multikill streak. The game reports a kill per kill and then "Double Kill" etc.;
+/// a multikill takes in the earlier kills of its streak (and a smaller multikill of the same
+/// streak) so it starts at the first kill and `span` reaches the last. Events must be sorted by
+/// `t`. Safe to run again: a multikill with `span` is done. Returns whether anything changed.
+pub fn merge_multikills(events: &mut Vec<RecEvent>) -> bool {
+    // Longest gap between two kills of one streak (10 s, 30 s before a penta), with slack.
+    const STREAK_GAP: f64 = 31.0;
+    let mut changed = false;
+    let mut i = 0;
+    while i < events.len() {
+        if events[i].kind != "multikill" || events[i].span.is_some() {
+            i += 1;
+            continue;
+        }
+        let end = events[i].t;
+        // This event is the streak's last kill; find the kills before it.
+        let mut need = events[i].multi.unwrap_or(2).saturating_sub(1) as u32;
+        let mut take = Vec::new();
+        let mut last = end;
+        for j in (0..i).rev() {
+            if need == 0 || last - events[j].t > STREAK_GAP {
+                break;
+            }
+            let count = match events[j].kind.as_str() {
+                "kill" => 1,
+                "multikill" => events[j].multi.unwrap_or(2) as u32,
+                _ => continue,
+            };
+            if count > need {
+                break;
+            }
+            need -= count;
+            last = events[j].t;
+            take.push(j);
+        }
+        let start = take.iter().map(|&j| events[j].t).fold(end, f64::min);
+        let before = take.iter().map(|&j| events[j].before).fold(events[i].before, f64::max);
+        let e = &mut events[i];
+        e.span = Some(end - start);
+        e.after += end - start;
+        e.before = before;
+        e.t = start;
+        e.champion = None;
+        for &j in &take {
+            events.remove(j);
+        }
+        i -= take.len();
+        changed = true;
+        i += 1;
+    }
+    if changed {
+        events.sort_by(|a, b| a.t.total_cmp(&b.t));
+    }
+    changed
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -297,6 +359,20 @@ impl Library {
             renamed += self.sync_session_names(&s);
         }
         renamed
+    }
+
+    /// `merge_multikills` for every recording (made before streaks were merged); returns how many
+    /// recordings changed.
+    pub fn merge_all_multikills(&self) -> usize {
+        let recordings: Vec<Recording> = self.inner.read().recordings.values().cloned().collect();
+        let mut changed = 0;
+        for mut r in recordings {
+            r.events.sort_by(|a, b| a.t.total_cmp(&b.t));
+            if merge_multikills(&mut r.events) && self.save_recording(&mut r).is_ok() {
+                changed += 1;
+            }
+        }
+        changed
     }
 
     /// `sync_names` for every recording of a session; returns how many changed.
@@ -745,6 +821,53 @@ pub fn move_file(from: &Path, to: &Path) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn kill(t: f64) -> RecEvent {
+        RecEvent { t, kind: "kill".into(), label: "Killed X".into(), before: 12.0, after: 8.0, champion: Some("Ahri".into()), ..Default::default() }
+    }
+
+    fn multi(t: f64, n: u8) -> RecEvent {
+        RecEvent { t, kind: "multikill".into(), label: "Double Kill".into(), multi: Some(n), before: 12.0, after: 8.0, ..Default::default() }
+    }
+
+    /// The real 2026-11-02 match: kill 318.4, Double Kill 324.6 (which took the second kill).
+    #[test]
+    fn a_double_kill_is_one_event() {
+        let mut ev = vec![kill(211.4), kill(318.4), multi(324.6, 2), kill(397.1)];
+        assert!(merge_multikills(&mut ev));
+        let ts: Vec<(f64, &str)> = ev.iter().map(|e| (e.t, e.kind.as_str())).collect();
+        assert_eq!(ts, [(211.4, "kill"), (318.4, "multikill"), (397.1, "kill")]);
+        let d = &ev[1];
+        assert!((d.span.unwrap() - 6.2).abs() < 1e-9);
+        assert!((d.after - (8.0 + 6.2)).abs() < 1e-9, "the clip reaches past the last kill");
+        assert!(d.champion.is_none());
+        assert!(!merge_multikills(&mut ev), "running again changes nothing");
+    }
+
+    /// A triple: kill, Double Kill (took kill 2), Triple Kill (took kill 3). Deaths and assists in
+    /// between stay.
+    #[test]
+    fn a_triple_takes_the_double_and_the_first_kill() {
+        let mut ev = vec![kill(100.0), RecEvent { t: 101.0, kind: "assist".into(), ..Default::default() }, multi(104.0, 2), multi(110.0, 3)];
+        merge_multikills(&mut ev);
+        let kinds: Vec<&str> = ev.iter().map(|e| e.kind.as_str()).collect();
+        assert_eq!(kinds, ["multikill", "assist"]);
+        assert_eq!((ev[0].t, ev[0].multi, ev[0].span), (100.0, Some(3), Some(10.0)));
+    }
+
+    /// Kills of an earlier streak are left alone, and a recording that starts mid-streak keeps
+    /// what it has.
+    #[test]
+    fn other_streaks_stay_apart() {
+        let mut ev = vec![multi(50.0, 2), kill(60.0), multi(66.0, 2)];
+        ev[0].span = Some(4.0);
+        merge_multikills(&mut ev);
+        let ts: Vec<f64> = ev.iter().map(|e| e.t).collect();
+        assert_eq!(ts, [50.0, 60.0]);
+        let mut mid = vec![multi(5.0, 3)];
+        merge_multikills(&mut mid);
+        assert_eq!((mid[0].t, mid[0].span), (5.0, Some(0.0)));
+    }
 
     #[test]
     fn numbered_names() {

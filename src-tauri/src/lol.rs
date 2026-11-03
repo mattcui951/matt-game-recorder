@@ -74,6 +74,9 @@ pub struct GameEvent {
     /// Kill count for multikills (2..=5).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub multi: Option<u8>,
+    /// The other champion (Data Dragon key) of a kill, death or assist.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub champion: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -103,6 +106,8 @@ pub struct MatchTracker {
     me: HashSet<String>,
     /// normalized name -> team ("ORDER" | "CHAOS")
     teams: HashMap<String, String>,
+    /// normalized name -> champion (Data Dragon key)
+    champions: HashMap<String, String>,
     pub my_team: Option<String>,
     pub champion: Option<String>,
     /// Data Dragon key, e.g. "MonkeyKing".
@@ -127,24 +132,33 @@ impl MatchTracker {
             let team = p.get("team").and_then(Value::as_str).unwrap_or("").to_string();
             let names = names_of(p);
             let is_me = names.iter().any(|n| self.me.contains(n));
+            let champion = champion_key(p);
             for n in &names {
                 self.teams.insert(n.clone(), team.clone());
+                if let Some(c) = &champion {
+                    self.champions.insert(n.clone(), c.clone());
+                }
+            }
+            // A player who hides their name shows up in events under their champion's name.
+            if let (Some(c), Some(shown)) = (&champion, p.get("championName").and_then(Value::as_str)) {
+                self.champions.insert(norm(shown), c.clone());
+                self.teams.insert(norm(shown), team.clone());
             }
             if is_me {
                 self.my_team = Some(team.clone());
                 self.champion = p.get("championName").and_then(Value::as_str).map(str::to_string);
-                self.champion_key = p
-                    .get("rawChampionName")
-                    .and_then(Value::as_str)
-                    .and_then(|r| r.rsplit('_').next())
-                    .map(str::to_string)
-                    .or_else(|| self.champion.clone().map(|c| c.replace([' ', '\'', '.'], "")));
+                self.champion_key = champion;
                 if let Some(s) = p.get("scores") {
                     let g = |k: &str| s.get(k).and_then(Value::as_u64).unwrap_or(0) as u32;
                     self.kda = Kda { kills: g("kills"), deaths: g("deaths"), assists: g("assists") };
                 }
             }
         }
+    }
+
+    /// The champion a player (by in-game name) plays.
+    fn champion_of(&self, name: &str) -> Option<String> {
+        self.champions.get(&norm(name)).cloned()
     }
 
     fn is_me(&self, name: &str) -> bool {
@@ -181,8 +195,8 @@ impl MatchTracker {
             let name = e.get("EventName").and_then(Value::as_str).unwrap_or("");
             let t = e.get("EventTime").and_then(Value::as_f64).unwrap_or(0.0);
             let s = |k: &str| e.get(k).and_then(Value::as_str).unwrap_or("").to_string();
-            let mut push = |kind: &str, label: String, multi: Option<u8>| {
-                out.push(GameEvent { kind: kind.into(), game_time: t, label, multi });
+            let mut push = |kind: &str, label: String, multi: Option<u8>, champion: Option<String>| {
+                out.push(GameEvent { kind: kind.into(), game_time: t, label, multi, champion });
             };
             match name {
                 "FirstBlood" if self.is_me(&s("Recipient")) => first_blood_time = Some(t),
@@ -195,32 +209,32 @@ impl MatchTracker {
                         .map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect())
                         .unwrap_or_default();
                     if self.is_me(&killer) {
-                        push("kill", format!("Killed {victim}"), None);
+                        push("kill", format!("Killed {victim}"), None, self.champion_of(&victim));
                     } else if self.is_me(&victim) {
-                        push("death", format!("Killed by {}", pretty_killer(&killer)), None);
+                        push("death", format!("Killed by {}", pretty_killer(&killer)), None, self.champion_of(&killer));
                     } else if assisters.iter().any(|a| self.is_me(a)) {
-                        push("assist", format!("Assist on {victim}"), None);
+                        push("assist", format!("Assist on {victim}"), None, self.champion_of(&victim));
                     }
                 }
                 "Multikill" if self.is_me(&s("KillerName")) => {
                     let n = e.get("KillStreak").and_then(Value::as_u64).unwrap_or(2).clamp(2, 5) as u8;
                     let label = ["", "", "Double Kill", "Triple Kill", "Quadra Kill", "Penta Kill"][n as usize];
-                    push("multikill", label.to_string(), Some(n));
+                    push("multikill", label.to_string(), Some(n), None);
                 }
-                "TurretKilled" if self.is_enemy_structure(&s("TurretKilled")) => push("turret", "Turret destroyed".into(), None),
-                "InhibKilled" if self.is_enemy_structure(&s("InhibKilled")) => push("inhibitor", "Inhibitor destroyed".into(), None),
+                "TurretKilled" if self.is_enemy_structure(&s("TurretKilled")) => push("turret", "Turret destroyed".into(), None, None),
+                "InhibKilled" if self.is_enemy_structure(&s("InhibKilled")) => push("inhibitor", "Inhibitor destroyed".into(), None, None),
                 "DragonKill" if self.is_ally(&s("KillerName")) => {
                     let ty = s("DragonType");
                     let what = if ty.is_empty() { "Dragon".to_string() } else { format!("{ty} Drake") };
-                    push("dragon", stolen(&s("Stolen"), what), None);
+                    push("dragon", stolen(&s("Stolen"), what), None, None);
                 }
-                "HeraldKill" if self.is_ally(&s("KillerName")) => push("herald", stolen(&s("Stolen"), "Rift Herald".into()), None),
-                "BaronKill" if self.is_ally(&s("KillerName")) => push("baron", stolen(&s("Stolen"), "Baron Nashor".into()), None),
+                "HeraldKill" if self.is_ally(&s("KillerName")) => push("herald", stolen(&s("Stolen"), "Rift Herald".into()), None, None),
+                "BaronKill" if self.is_ally(&s("KillerName")) => push("baron", stolen(&s("Stolen"), "Baron Nashor".into()), None, None),
                 "GameEnd" => {
                     let r = s("Result");
                     self.result = Some(if r.eq_ignore_ascii_case("win") { "win".into() } else { "loss".into() });
                     if r.eq_ignore_ascii_case("win") {
-                        push("victory", "Victory".into(), None);
+                        push("victory", "Victory".into(), None, None);
                     }
                 }
                 _ => {}
@@ -233,6 +247,17 @@ impl MatchTracker {
         }
         out
     }
+}
+
+/// Data Dragon key of a player-list entry ("MonkeyKing"), from `rawChampionName`
+/// ("game_character_displayname_MonkeyKing") or else the display name without spaces.
+fn champion_key(p: &Value) -> Option<String> {
+    p.get("rawChampionName")
+        .and_then(Value::as_str)
+        .and_then(|r| r.rsplit('_').next())
+        .filter(|k| !k.is_empty())
+        .map(str::to_string)
+        .or_else(|| p.get("championName").and_then(Value::as_str).map(|c| c.replace([' ', '\'', '.'], "")))
 }
 
 fn stolen(flag: &str, what: String) -> String {
@@ -320,5 +345,32 @@ pub mod art {
         let icon_ok = icon.exists() || version().is_some_and(|v| fetch(&format!("https://ddragon.leagueoflegends.com/cdn/{v}/img/champion/{key}.png"), &icon));
         let splash_ok = fetch(&format!("https://ddragon.leagueoflegends.com/cdn/img/champion/splash/{key}_0.jpg"), &splash);
         icon_ok && splash_ok
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    /// Kills, deaths and assists carry the other player's champion from the player list.
+    #[test]
+    fn events_name_the_champion() {
+        let mut tr = MatchTracker::default();
+        tr.update_active_player(&json!({ "riotIdGameName": "ChickenBall", "riotId": "ChickenBall#Cola" }));
+        tr.update_players(&[
+            json!({ "riotId": "ChickenBall#Cola", "riotIdGameName": "ChickenBall", "team": "CHAOS", "championName": "Tryndamere", "rawChampionName": "game_character_displayname_Tryndamere" }),
+            json!({ "riotId": "Call Anh Phoong#LUV", "riotIdGameName": "Call Anh Phoong", "team": "ORDER", "championName": "Pyke", "rawChampionName": "game_character_displayname_Pyke" }),
+            json!({ "riotId": "Moose#NA0", "riotIdGameName": "Moose", "team": "ORDER", "championName": "Wukong", "rawChampionName": "game_character_displayname_MonkeyKing" }),
+        ]);
+        let got = tr.ingest(&[
+            json!({ "EventID": 1, "EventName": "ChampionKill", "EventTime": 60.0, "KillerName": "ChickenBall", "VictimName": "Moose", "Assisters": [] }),
+            json!({ "EventID": 2, "EventName": "ChampionKill", "EventTime": 90.0, "KillerName": "Call Anh Phoong", "VictimName": "ChickenBall", "Assisters": [] }),
+            // A hidden name: the event uses the champion's name.
+            json!({ "EventID": 3, "EventName": "ChampionKill", "EventTime": 95.0, "KillerName": "ChickenBall", "VictimName": "Wukong", "Assisters": [] }),
+        ]);
+        let pairs: Vec<(&str, Option<&str>)> = got.iter().map(|e| (e.kind.as_str(), e.champion.as_deref())).collect();
+        assert_eq!(pairs, [("kill", Some("MonkeyKing")), ("death", Some("Pyke")), ("kill", Some("MonkeyKing"))]);
+        assert_eq!(tr.champion_key.as_deref(), Some("Tryndamere"));
     }
 }

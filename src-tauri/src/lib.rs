@@ -173,6 +173,11 @@ pub fn run() {
                     if core.library.recover_partials() > 0 {
                         core.library_changed();
                     }
+                    let merged = core.library.merge_all_multikills();
+                    if merged > 0 {
+                        log::info!("merged multikill streaks in {merged} recordings");
+                        core.library_changed();
+                    }
                     let renamed = core.library.renumber_all();
                     if renamed > 0 {
                         log::info!("renamed {renamed} recordings to match their match numbers");

@@ -1,7 +1,7 @@
 <script lang="ts">
   import Icon from './Icon.svelte';
   import { clock } from '../lib/format.svelte';
-  import { eventLabel, meta } from '../lib/events';
+  import { eventLabel, LANES, laneOf, meta, rank } from '../lib/events';
   import { t } from '../lib/i18n.svelte';
   import type { RecEvent } from '../lib/types';
 
@@ -36,21 +36,53 @@
   let viewW = $state(800);
   const innerW = $derived(viewW * zoom);
   const d = $derived(Math.max(duration, 0.001));
-  const x = (t: number) => (t / d) * innerW;
-  const tAt = (px: number) => Math.max(0, Math.min(d, (px / innerW) * d));
+  // Room at both ends so the first and last marks are not cut in half.
+  const PAD = 14;
+  const x = (t: number) => PAD + (t / d) * (innerW - 2 * PAD);
+  const tAt = (px: number) => Math.max(0, Math.min(d, ((px - PAD) / (innerW - 2 * PAD)) * d));
+  /** Width in px of a stretch of time (no padding). */
+  const w = (secs: number) => (secs / d) * (innerW - 2 * PAD);
 
-  // Chips that would overlap move to a second row.
-  const placed = $derived.by(() => {
-    const last = [-1e9, -1e9];
-    return [...events]
-      .sort((p, q) => p.t - q.t)
-      .map((e) => {
-        const px = x(e.t);
-        const row = px - last[0] >= 24 ? 0 : px - last[1] >= 24 ? 1 : 0;
-        last[row] = px;
-        return { e, px, row };
-      });
+  // One row per kind of moment (fights, team play, the map), most important on top; rows with
+  // nothing to show are left out. Marks that would touch in a row become one group mark with a
+  // count; clicking it zooms in until they come apart.
+  const CHIP = 22;
+  const GAP = 4;
+  /** A multikill shows its name ("Double"), so it needs more room than an icon. */
+  const STREAK = 74;
+  const ROW_H = 28;
+  type Mark = { lane: number; px: number; end: number; items: RecEvent[] };
+  const marks = $derived.by(() => {
+    const out: Mark[] = [];
+    const last: (Mark | undefined)[] = [];
+    for (const e of [...events].sort((p, q) => p.t - q.t)) {
+      const lane = laneOf(e.kind);
+      const px = x(e.t);
+      const end = e.kind === 'multikill' ? Math.max(px + w(e.span ?? 0), px + STREAK - CHIP) : px;
+      const cur = last[lane];
+      if (cur && px - CHIP / 2 < cur.end + CHIP / 2 + GAP) {
+        cur.items.push(e);
+        cur.end = Math.max(cur.end, end);
+      } else {
+        const m = { lane, px, end, items: [e] };
+        out.push(m);
+        last[lane] = m;
+      }
+    }
+    return out;
   });
+  const rows = $derived(LANES.map((_, i) => i).filter((i) => marks.some((m) => m.lane === i)));
+  const rowOf = (lane: number) => Math.max(0, rows.indexOf(lane));
+  const lanesH = $derived(Math.max(1, rows.length) * ROW_H + 6);
+  const lead = (m: Mark) => m.items.reduce((a, b) => (rank(b) > rank(a) ? b : a));
+  /** Where a mark's left edge goes: at its moment, but never past the end of the timeline. */
+  function markLeft(m: Mark): number {
+    const single = m.items.length === 1;
+    const width = single ? m.end - m.px + CHIP : m.end - m.px + CHIP + kindsOf(m).length * 13 + 16;
+    return Math.min(m.px, innerW - width + CHIP / 2 - 2);
+  }
+  /** Distinct kinds in a group, most important first (up to three icons). */
+  const kindsOf = (m: Mark) => [...new Set([...m.items].sort((a, b) => rank(b) - rank(a)).map((e) => e.kind))].slice(0, 3);
 
   const ticks = $derived.by(() => {
     const steps = [5, 10, 15, 30, 60, 120, 300, 600, 1200];
@@ -82,7 +114,13 @@
   });
 
   // Hover preview
-  let hover = $state<{ px: number; t: number; label?: string; color?: string } | null>(null);
+  type Line = { label: string; color: string; t: number };
+  let hover = $state<{ px: number; t: number; lines?: Line[] } | null>(null);
+  const HOVER_LINES = 6;
+  function hoverMark(m: Mark) {
+    const lines = m.items.map((e) => ({ label: eventLabel(e), color: meta(e.kind).color, t: e.t }));
+    hover = { px: m.px - (scroller?.scrollLeft ?? 0), t: m.items[0].t, lines };
+  }
   let spriteImg = $state<{ w: number; h: number; n: number } | null>(null);
   $effect(() => {
     spriteImg = null;
@@ -149,6 +187,20 @@
     }
   }
 
+  function markClick(e: MouseEvent, m: Mark) {
+    if (m.items.length === 1) return chipClick(e, m.items[0]);
+    e.stopPropagation();
+    // Zoom until the group's marks have room, keeping it in view.
+    const a = m.items[0].t;
+    const b = Math.max(...m.items.map((ev) => ev.t + (ev.span ?? 0)));
+    const need = (m.items.length * (CHIP + GAP) * 2) / Math.max(1, w(b - a) + CHIP);
+    zoom = Math.max(1, Math.min(48, zoom * Math.max(1.5, need)));
+    requestAnimationFrame(() => {
+      if (scroller) scroller.scrollLeft = x((a + b) / 2) - viewW / 2;
+    });
+    hover = null;
+  }
+
   function onWheel(e: WheelEvent) {
     if (!e.ctrlKey || !scroller) return;
     e.preventDefault();
@@ -178,7 +230,7 @@
   <div class="scroller" bind:this={scroller} bind:clientWidth={viewW} onwheel={onWheel}>
     <div
       class="inner"
-      style="width:{innerW}px"
+      style="width:{innerW}px;--lanes:{lanesH}px"
       role="slider"
       tabindex="-1"
       aria-label={t.timeline.label}
@@ -190,26 +242,38 @@
       onpointerup={up}
       onpointerleave={() => (hover = null)}
     >
-      <div class="lane">
-        {#each placed as p (p.e.t + p.e.kind)}
-          {@const m = meta(p.e.kind)}
-          <span class="window" style="left:{x(Math.max(0, p.e.t - p.e.before))}px;width:{Math.max(2, x(p.e.before + p.e.after))}px;--c:{m.color}"></span>
+      <div class="lanes">
+        {#each rows as lane, i (lane)}
+          <span class="row-band" class:odd={i % 2 === 1} style="top:{i * ROW_H + 3}px" aria-hidden="true"></span>
+        {/each}
+        {#each marks as mk (mk.lane + ':' + mk.items[0].t + mk.items[0].kind)}
+          {@const top = lead(mk)}
+          {@const m = meta(top.kind)}
+          {@const single = mk.items.length === 1}
           <button
-            class="chip row{p.row}"
-            class:multi={p.e.multi}
-            style="left:{p.px}px;--c:{m.color}"
+            class="mark"
+            class:group={!single}
+            class:streak={single && top.kind === 'multikill'}
+            style="left:{markLeft(mk)}px;top:{rowOf(mk.lane) * ROW_H + 6}px;--w:{Math.max(0, mk.end - mk.px)}px;--c:{m.color}"
             onpointerdown={(e) => e.stopPropagation()}
-            onclick={(e) => chipClick(e, p.e)}
-            onpointerenter={() => (hover = { px: p.px - (scroller?.scrollLeft ?? 0), t: p.e.t, label: eventLabel(p.e.label), color: m.color })}
-            aria-label="{p.e.label} at {clock(p.e.t)}"
+            onclick={(e) => markClick(e, mk)}
+            onpointerenter={() => hoverMark(mk)}
+            aria-label={single ? `${eventLabel(top)} ${clock(top.t)}` : t.timeline.group(mk.items.length, clock(mk.items[0].t))}
           >
-            <Icon name={m.icon} size={14} />
-            {#if p.e.multi}<span class="badge num">{p.e.multi}</span>{/if}
+            {#if single}
+              <Icon name={m.icon} size={14} />
+              {#if top.kind === 'multikill' && top.multi}<span class="streak-name">{t.timeline.streak[top.multi]}</span>{/if}
+            {:else}
+              <span class="icons">
+                {#each kindsOf(mk) as k (k)}<span style="color:{meta(k).color}"><Icon name={meta(k).icon} size={12} /></span>{/each}
+              </span>
+              <span class="count num">{mk.items.length}</span>
+            {/if}
           </button>
         {/each}
       </div>
       {#if showApm && apmSeries.length}
-        <svg class="apm-g" viewBox="0 0 {(apmSeries.length / d) * 1000} 40" preserveAspectRatio="none" style="width:{x(apmSeries.length)}px" aria-hidden="true">
+        <svg class="apm-g" viewBox="0 0 {(apmSeries.length / d) * 1000} 40" preserveAspectRatio="none" style="left:{PAD}px;width:{w(apmSeries.length)}px" aria-hidden="true">
           <path d={apmPath} />
         </svg>
         <span class="apm-max num">{Math.round(apmMax)} {t.timeline.apm}</span>
@@ -221,12 +285,12 @@
       </div>
 
       {#each selection as r, i (i)}
-        <span class="sel" style="left:{x(r.a)}px;width:{x(r.b - r.a)}px"></span>
+        <span class="sel" style="left:{x(r.a)}px;width:{w(r.b - r.a)}px"></span>
       {/each}
       {#if mode === 'trim'}
         <span class="shade" style="left:0;width:{x(trim.a)}px"></span>
         <span class="shade" style="left:{x(trim.b)}px;right:0"></span>
-        <span class="trim" style="left:{x(trim.a)}px;width:{x(trim.b - trim.a)}px">
+        <span class="trim" style="left:{x(trim.a)}px;width:{w(trim.b - trim.a)}px">
           <span class="len num">{clock(trim.b - trim.a, true)}</span>
         </span>
         <span class="handle" style="left:{x(trim.a)}px" role="slider" tabindex="0" aria-label={t.timeline.clipStart} aria-valuenow={trim.a} onpointerdown={(e) => handleDown(e, 'a')}></span>
@@ -241,8 +305,20 @@
       {#if spriteImg && sprite}
         <span class="frame" style="background-image:url('{sprite}');background-position:-{frame * 160}px 0;height:{spriteImg.h}px"></span>
       {/if}
-      {#if hover.label}<span class="h-label" style="color:{hover.color}">{hover.label}</span>{/if}
-      <span class="h-time num">{clock(hover.t)}</span>
+      {#if hover.lines?.length === 1}
+        <span class="h-label" style="color:{hover.lines[0].color}">{hover.lines[0].label}</span>
+        <span class="h-time num">{clock(hover.t)}</span>
+      {:else if hover.lines}
+        <ul class="h-list">
+          {#each hover.lines.slice(0, HOVER_LINES) as l, i (i)}
+            <li><span class="h-time num">{clock(l.t)}</span><span class="h-label" style="color:{l.color}">{l.label}</span></li>
+          {/each}
+        </ul>
+        {#if hover.lines.length > HOVER_LINES}<span class="h-time">{t.timeline.more(hover.lines.length - HOVER_LINES)}</span>{/if}
+        <span class="h-hint">{t.timeline.zoomHint}</span>
+      {:else}
+        <span class="h-time num">{clock(hover.t)}</span>
+      {/if}
     </div>
   {/if}
 </div>
@@ -258,35 +334,43 @@
   }
   .inner {
     position: relative;
-    height: 96px;
+    height: calc(var(--lanes) + 30px);
     cursor: pointer;
     min-width: 100%;
   }
   .apm .inner {
-    height: 138px;
+    height: calc(var(--lanes) + 72px);
   }
-  .lane {
+  .lanes {
     position: absolute;
     left: 0;
     right: 0;
     top: 0;
-    height: 66px;
+    height: var(--lanes);
   }
-  .window {
+  .row-band {
     position: absolute;
-    top: 56px;
-    height: 6px;
-    border-radius: 1px;
-    background: color-mix(in oklab, var(--c) 34%, transparent);
-    box-shadow: inset 0 1px 0 var(--c);
+    left: 0;
+    right: 0;
+    height: 28px;
+    pointer-events: none;
   }
-  .chip {
+  .row-band.odd {
+    background: color-mix(in oklab, var(--text) 3%, transparent);
+  }
+  /* A moment: an icon chip. A multikill stretches from its first kill to its last; a group of
+     moments too close to tell apart shows their icons and a count. */
+  .mark {
     position: absolute;
-    width: 22px;
+    min-width: 22px;
+    width: calc(var(--w) + 22px);
     height: 22px;
     margin-left: -11px;
-    display: grid;
-    place-items: center;
+    padding: 0 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
     border-radius: var(--r-sm);
     background: var(--panel-2);
     color: var(--c);
@@ -294,36 +378,57 @@
     transition: transform 100ms var(--ease-out), background 100ms;
     z-index: 2;
   }
-  /* Above neighbouring chips, so the kill-count badge is never covered by the next marker. */
-  .chip.multi {
+  .mark.streak {
+    justify-content: flex-start;
+    gap: 4px;
+    padding: 0 7px 0 4px;
+    min-width: 74px;
+    background: color-mix(in oklab, var(--c) 16%, var(--panel-2));
+    box-shadow: inset 0 0 0 1px var(--c);
+  }
+  /* Several moments in one mark: drawn as a small stack so it never reads as a multikill. */
+  .mark.group {
+    width: auto;
+    min-width: calc(var(--w) + 22px);
+    justify-content: flex-start;
+    box-shadow:
+      inset 0 0 0 1px var(--seam-strong),
+      2px 2px 0 -1px var(--panel-3),
+      2px 2px 0 0 var(--seam-strong);
+    color: var(--text-2);
     z-index: 3;
   }
-  .chip.row0 {
-    top: 6px;
+  .streak-name {
+    font-size: 11.5px;
+    font-weight: 700;
+    white-space: nowrap;
   }
-  .chip.row1 {
-    top: 31px;
-  }
-  .chip:hover {
+  .mark:hover {
     background: color-mix(in oklab, var(--c) 22%, var(--panel-2));
     transform: translateY(-1px);
+    z-index: 4;
   }
-  .badge {
-    position: absolute;
-    top: -6px;
-    right: -7px;
-    min-width: 14px;
-    height: 14px;
-    padding: 0 3px;
-    border-radius: 7px;
-    background: var(--c);
-    color: var(--you-ink);
-    font-size: 10px;
-    line-height: 14px;
+  .mark.group:hover {
+    background: var(--panel-3);
+  }
+  .mark :global(svg) {
+    flex: none;
+  }
+  .icons {
+    display: flex;
+    gap: 1px;
+  }
+  .icons span {
+    display: grid;
+  }
+  .count {
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1;
   }
   .apm-g {
     position: absolute;
-    top: 70px;
+    top: calc(var(--lanes) + 2px);
     left: 0;
     height: 40px;
   }
@@ -335,8 +440,9 @@
   }
   .apm-max {
     position: absolute;
-    top: 68px;
-    left: 4px;
+    top: var(--lanes);
+    /* Clear of the playhead when it sits at the start. */
+    left: 22px;
     font-size: 10.5px;
     color: var(--text-3);
     pointer-events: none;
@@ -470,5 +576,22 @@
   .h-time {
     font-size: 12px;
     color: var(--text-2);
+  }
+  .h-list {
+    display: grid;
+    gap: 3px;
+    justify-self: stretch;
+    list-style: none;
+    margin: 0;
+    padding: 0 2px;
+  }
+  .h-list li {
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+  }
+  .h-hint {
+    font-size: 11px;
+    color: var(--text-3);
   }
 </style>

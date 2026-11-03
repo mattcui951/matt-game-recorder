@@ -92,7 +92,18 @@ export type Settings = {
 
 export type Kda = { kills: number; deaths: number; assists: number };
 
-export type RecEvent = { t: number; kind: string; label: string; multi?: number; before: number; after: number };
+export type RecEvent = {
+  t: number;
+  kind: string;
+  label: string;
+  multi?: number;
+  before: number;
+  after: number;
+  /** The other champion (Data Dragon key): who was killed, or who killed you. */
+  champion?: string;
+  /** Multikills: seconds from the streak's first kill (`t`) to its last. */
+  span?: number;
+};
 
 export type Session = {
   id: string;

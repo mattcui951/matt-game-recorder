@@ -1,3 +1,4 @@
+import { championName } from './format.svelte';
 import { t } from './i18n.svelte';
 import type { RecEvent } from './types';
 
@@ -22,8 +23,27 @@ const EVENT_STYLE: Record<string, { color: string; icon: string }> = {
 /** Kinds that can be toggled in settings, in Outplayed's order. */
 export const SETTING_KINDS = ['victory', 'kill', 'death', 'assist', 'ultimate', 'baron', 'dragon', 'herald', 'turret', 'inhibitor'];
 
-/** Kinds offered by filters (multikill folds into kill). */
-export const FILTER_KINDS = ['bookmark', ...SETTING_KINDS];
+/** Kinds offered by filters (multikill folds into kill), most important first. */
+export const FILTER_KINDS = ['kill', 'death', 'assist', 'ultimate', 'turret', 'inhibitor', 'dragon', 'herald', 'baron', 'victory', 'bookmark'];
+
+/** Timeline rows, most important first: fights, then team play, then the map. */
+export const LANES: { id: 'fights' | 'team' | 'map'; kinds: string[] }[] = [
+  { id: 'fights', kinds: ['kill', 'multikill', 'death'] },
+  { id: 'team', kinds: ['assist', 'ultimate'] },
+  { id: 'map', kinds: ['turret', 'inhibitor', 'dragon', 'herald', 'baron', 'victory', 'bookmark'] },
+];
+
+export function laneOf(kind: string): number {
+  const i = LANES.findIndex((l) => l.kinds.includes(kind));
+  return i < 0 ? LANES.length - 1 : i;
+}
+
+/** How much an event matters, for picking which one stands for a group. */
+export function rank(e: RecEvent): number {
+  const order = ['multikill', 'kill', 'death', 'baron', 'dragon', 'herald', 'inhibitor', 'turret', 'victory', 'assist', 'ultimate', 'bookmark'];
+  const i = order.indexOf(e.kind);
+  return (e.multi ?? 0) * 100 + (i < 0 ? 0 : order.length - i);
+}
 
 export function meta(kind: string): EventMeta {
   const style = EVENT_STYLE[kind] ?? { color: 'var(--mark)', icon: 'flag' };
@@ -55,8 +75,24 @@ function objective(text: string): string {
   return text;
 }
 
-/** An event's label in the UI language. Unknown labels (typed by the user) are left alone. */
-export function eventLabel(label: string): string {
+/**
+ * An event's label in the UI language. Kills, deaths and assists name the other champion when
+ * it is known (player names are not interesting); a multikill is "Double Kill" etc.
+ */
+export function eventLabel(e: RecEvent): string {
+  const L = t.eventLabel;
+  if (e.kind === 'multikill' && e.multi && L.multi[e.multi]) return L.multi[e.multi];
+  if (e.champion) {
+    const c = championName(e.champion);
+    if (e.kind === 'death') return L.killedBy(c);
+    if (e.kind === 'assist') return L.assistOn(c);
+    if (e.kind === 'kill') return e.label.startsWith('First Blood') ? L.firstBlood(c) : L.killed(c);
+  }
+  return labelText(e.label);
+}
+
+/** A stored English label in the UI language. Unknown labels (typed by the user) are left alone. */
+function labelText(label: string): string {
   const L = t.eventLabel;
   let m: RegExpExecArray | null;
   if ((m = /^Killed by (.+)$/.exec(label))) return L.killedBy(who(m[1]));

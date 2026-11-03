@@ -238,7 +238,7 @@ fn tick(core: &Arc<Core>, live: &LiveClient, active: &mut Option<MatchSession>, 
                 if inp.take_ult_presses() > 0 && m.tracker.ult_level > 0 && m.gs.event_enabled("ultimate") && now - m.last_ult > 15.0 && game_pid.is_some() {
                     m.last_ult = now;
                     let tm = m.gs.timing_for("ultimate");
-                    push_event(core, m, RecEvent { t: (now - 0.5).max(0.0), kind: "ultimate".into(), label: "Ultimate".into(), multi: None, before: tm.before, after: tm.after });
+                    push_event(core, m, RecEvent { t: (now - 0.5).max(0.0), kind: "ultimate".into(), label: "Ultimate".into(), multi: None, before: tm.before, after: tm.after, ..Default::default() });
                 }
             }
 
@@ -430,20 +430,34 @@ fn add_game_event(core: &Core, m: &mut MatchSession, ge: GameEvent) {
         // Happened before the recording started (e.g. the app was opened mid-game).
         return;
     }
-    // A multikill upgrades the kill it belongs to instead of adding a second mark.
+    // A multikill becomes the streak's one mark: it takes the kill it was reported with, then the
+    // streak's earlier kills (see `merge_multikills`). Clips waiting to be cut follow.
     if ge.kind == "multikill" {
-        if let Some(k) = m.events.iter_mut().rev().find(|e| (e.kind == "kill" || e.kind == "multikill") && (e.t - t).abs() < 2.0) {
-            k.kind = "multikill".into();
-            k.label = ge.label.clone();
-            k.multi = ge.multi;
-            if let Some(p) = m.pending.iter_mut().rev().find(|p| (p.event.t - k.t).abs() < 0.01) {
-                p.event = k.clone();
-            }
-            return;
+        let tm = m.gs.timing_for("kill");
+        let mut ev = RecEvent { t, kind: "multikill".into(), label: ge.label, multi: ge.multi, before: tm.before, after: tm.after, ..Default::default() };
+        if let Some(i) = m.events.iter().rposition(|e| e.kind == "kill" && (e.t - t).abs() < 2.0) {
+            let k = m.events.remove(i);
+            ev.t = k.t;
+            m.pending.retain(|p| !(p.event.kind == "kill" && (p.event.t - k.t).abs() < 0.01));
         }
+        let before: Vec<(f64, String)> = m.events.iter().map(|e| (e.t, e.kind.clone())).collect();
+        m.events.push(ev);
+        m.events.sort_by(|a, b| a.t.total_cmp(&b.t));
+        crate::library::merge_multikills(&mut m.events);
+        // Drop pending clips of the kills that were merged away, and queue the streak's clip.
+        let kept: Vec<(f64, String)> = m.events.iter().map(|e| (e.t, e.kind.clone())).collect();
+        let gone: Vec<(f64, String)> = before.into_iter().filter(|b| !kept.iter().any(|k| (k.0 - b.0).abs() < 0.01 && k.1 == b.1)).collect();
+        m.pending.retain(|p| !gone.iter().any(|g| (g.0 - p.event.t).abs() < 0.01 && g.1 == p.event.kind) && p.event.kind != "multikill");
+        if let Some(streak) = m.events.iter().rev().find(|e| e.kind == "multikill").cloned() {
+            if m.mode == "highlights" {
+                m.pending.push(Pending { event: streak.clone(), pin: None });
+            }
+            let _ = core.app.emit("live-event", streak);
+        }
+        return;
     }
     let tm = m.gs.timing_for(&ge.kind);
-    push_event(core, m, RecEvent { t, kind: ge.kind, label: ge.label, multi: ge.multi, before: tm.before, after: tm.after });
+    push_event(core, m, RecEvent { t, kind: ge.kind, label: ge.label, multi: ge.multi, before: tm.before, after: tm.after, champion: ge.champion, span: None });
 }
 
 fn push_event(core: &Core, m: &mut MatchSession, ev: RecEvent) {
@@ -502,7 +516,9 @@ fn process_pending(core: &Core, m: &mut MatchSession, force: bool) {
     for g in groups {
         let a = g.iter().map(|p| p.event.t - p.event.before).fold(f64::MAX, f64::min).max(0.0);
         let b = g.iter().map(|p| p.event.t + p.event.after).fold(f64::MIN, f64::max);
-        if !force && b + 3.0 > now {
+        // A kill may still become part of a multikill streak: wait out the streak window first.
+        let grace = if g.iter().any(|p| p.event.kind == "kill" || p.event.kind == "multikill") { 11.0 } else { 3.0 };
+        if !force && b + grace > now {
             m.pending.extend(g);
             continue;
         }
@@ -547,7 +563,7 @@ fn finish_match(core: &Arc<Core>, mut m: MatchSession) {
     if let Some((start, pin)) = m.bookmark.take() {
         let now = m.rec.now();
         let tm = m.gs.hotkeys.bookmark_toggle_before;
-        let ev = RecEvent { t: start, kind: "bookmark".into(), label: "Manual capture".into(), multi: None, before: tm, after: (now - start).max(1.0) };
+        let ev = RecEvent { t: start, kind: "bookmark".into(), label: "Manual capture".into(), multi: None, before: tm, after: (now - start).max(1.0), ..Default::default() };
         m.events.push(ev.clone());
         if m.mode != "match" && m.mode != "session" {
             m.pending.push(Pending { event: ev, pin: Some(pin) });
@@ -621,7 +637,7 @@ fn handle_hotkey(core: &Arc<Core>, h: Hotkey, active: &mut Option<MatchSession>,
             if let Some(s) = screen.as_mut() {
                 let sr = core.settings().screen_recorder;
                 let t = s.rec.now();
-                s.events.push(RecEvent { t, kind: "bookmark".into(), label: "Bookmark".into(), multi: None, before: sr.bookmark_before, after: sr.bookmark_after });
+                s.events.push(RecEvent { t, kind: "bookmark".into(), label: "Bookmark".into(), multi: None, before: sr.bookmark_before, after: sr.bookmark_after, ..Default::default() });
             }
         }
         Hotkey::ToggleApp => core.toggle_main_on_top(),
@@ -631,7 +647,7 @@ fn handle_hotkey(core: &Arc<Core>, h: Hotkey, active: &mut Option<MatchSession>,
     match h {
         Hotkey::PlaceBookmark => {
             let hk = &m.gs.hotkeys;
-            let ev = RecEvent { t: m.rec.now(), kind: "bookmark".into(), label: "Bookmark".into(), multi: None, before: hk.place_before, after: hk.place_after };
+            let ev = RecEvent { t: m.rec.now(), kind: "bookmark".into(), label: "Bookmark".into(), multi: None, before: hk.place_before, after: hk.place_after, ..Default::default() };
             push_event(core, m, ev);
         }
         Hotkey::BookmarkToggle => match m.bookmark.take() {
@@ -645,7 +661,7 @@ fn handle_hotkey(core: &Arc<Core>, h: Hotkey, active: &mut Option<MatchSession>,
             }
             Some((start, pin)) => {
                 let now = m.rec.now();
-                let ev = RecEvent { t: start, kind: "bookmark".into(), label: "Manual capture".into(), multi: None, before: m.gs.hotkeys.bookmark_toggle_before, after: (now - start).max(1.0) };
+                let ev = RecEvent { t: start, kind: "bookmark".into(), label: "Manual capture".into(), multi: None, before: m.gs.hotkeys.bookmark_toggle_before, after: (now - start).max(1.0), ..Default::default() };
                 m.events.push(ev.clone());
                 if m.mode == "match" || m.mode == "session" {
                     m.rec.unpin(pin);

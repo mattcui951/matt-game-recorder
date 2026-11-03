@@ -42,22 +42,15 @@
     }).catch(() => {});
   });
 
-  // Filters
-  let hidden = $state<string[]>([]);
-  const kindsHere = $derived(FILTER_KINDS.filter((k) => rec?.events.some((e) => filterKey(e) === k)));
-  const shown = $derived((rec?.events ?? []).filter((e) => !hidden.includes(filterKey(e))));
-
-  // Moments list (review focus)
-  let momentTab = $state<'all' | 'death' | 'fights' | 'objectives'>('all');
-  const moments = $derived(
-    shown.filter((e) => {
-      const k = filterKey(e);
-      if (momentTab === 'death') return k === 'death';
-      if (momentTab === 'fights') return ['kill', 'assist', 'ultimate'].includes(k);
-      if (momentTab === 'objectives') return ['turret', 'inhibitor', 'dragon', 'herald', 'baron', 'victory'].includes(k);
-      return true;
-    }),
+  // Filter: nothing picked shows everything; pick one or more kinds to see only those, on the
+  // timeline and in the moment list alike.
+  let only = $state<string[]>([]);
+  const counts = $derived(
+    (rec?.events ?? []).reduce<Record<string, number>>((c, e) => ((c[filterKey(e)] = (c[filterKey(e)] ?? 0) + 1), c), {}),
   );
+  const kindsHere = $derived(FILTER_KINDS.filter((k) => counts[k]));
+  const shown = $derived((rec?.events ?? []).filter((e) => !only.length || only.includes(filterKey(e))));
+  const pick = (k: string) => (only = only.includes(k) ? only.filter((x) => x !== k) : [...only, k]);
   const current = $derived(rec?.events.findLast((e) => e.t - e.before <= time + 0.25 && e.t + e.after >= time - 0.25));
 
   // Tools
@@ -76,6 +69,7 @@
     mode = 'view';
     selection = [];
     zoom = 1;
+    only = [];
   });
 
   function startTrim() {
@@ -248,7 +242,7 @@
         <div class="video">
           <Player bind:this={player} src={mediaSrc(rec, rec.file)} poster={mediaSrc(rec, rec.thumb)} image={rec.kind === 'screenshot'} bind:time bind:duration bind:paused seekTo={seekReq} />
           {#if current && !paused}
-            <span class="now-chip" style="--c:{meta(current.kind).color}"><Icon name={meta(current.kind).icon} size={14} />{eventLabel(current.label)}</span>
+            <span class="now-chip" style="--c:{meta(current.kind).color}"><Icon name={meta(current.kind).icon} size={14} />{eventLabel(current)}</span>
           {/if}
         </div>
 
@@ -273,8 +267,15 @@
                   <button class="btn primary sm" onclick={openInEditor}><Icon name="editor" size={15} />{selection.length ? t.session.openInEditor : t.session.openWholeInEditor}</button>
                   {#if selection.length}<button class="btn ghost sm" onclick={() => (selection = [])}>{t.common.clear}</button>{/if}
                 </div>
-              {:else if current}
-                <span class="cur" style="--c:{meta(current.kind).color}"><Icon name={meta(current.kind).icon} size={15} />{eventLabel(current.label)}<span class="num dim">{clock(current.t)}</span></span>
+              {:else if kindsHere.length}
+                <div class="filters" role="group" aria-label={t.session.filter}>
+                  <button class="fchip all" class:on={!only.length} aria-pressed={!only.length} onclick={() => (only = [])}>{t.session.tabAll}<span class="num n">{rec.events.length}</span></button>
+                  {#each kindsHere as k (k)}
+                    <button class="fchip" class:on={only.includes(k)} aria-pressed={only.includes(k)} style="--c:{meta(k).color}" onclick={() => pick(k)}>
+                      <Icon name={meta(k).icon} size={13} /><span>{t.filters[k] ?? meta(k).label}</span><span class="num n">{counts[k]}</span>
+                    </button>
+                  {/each}
+                </div>
               {/if}
             </div>
             <div class="tools">
@@ -309,25 +310,6 @@
               <button class="icon-btn" onclick={() => (zoom = Math.min(48, zoom * 1.5))} aria-label={t.session.zoomIn} title={t.session.zoomInWheel}><Icon name="plus" size={16} /></button>
               <span class="divider"></span>
               <button class="icon-btn" class:on={ui.showApm} onclick={() => (ui.showApm = !ui.showApm)} disabled={!rec.apm?.length} aria-label={t.session.apm} title={rec.apm?.length ? t.session.apm : t.session.noApm}><Icon name="gauge" size={17} /></button>
-              <Popover width={240} placement="above">
-                {#snippet anchor(toggleOpen)}
-                  <button class="icon-btn" class:on={hidden.length > 0} onclick={toggleOpen} aria-label={t.session.filter} title={t.session.filter}><Icon name="filter" size={17} /></button>
-                {/snippet}
-                {#snippet children()}
-                  <div class="sc">
-                    <div class="sc-title">{t.session.filter}</div>
-                    {#each kindsHere as k (k)}
-                      <button class="sc-kind" class:on={!hidden.includes(k)} style="--c:{meta(k).color}" onclick={() => (hidden = hidden.includes(k) ? hidden.filter((x) => x !== k) : [...hidden, k])}>
-                        <Icon name={meta(k).icon} size={15} /><span>{meta(k).label}</span>
-                        {#if !hidden.includes(k)}<Icon name="check" size={14} />{/if}
-                      </button>
-                    {:else}
-                      <span class="dim">{t.session.noEvents}</span>
-                    {/each}
-                    <button class="btn ghost sm" onclick={() => go({ name: 'settings', page: 'lol' })}>{t.session.gameSettings}</button>
-                  </div>
-                {/snippet}
-              </Popover>
             </div>
           </div>
 
@@ -336,18 +318,14 @@
       </div>
 
       <aside class="side">
-        <div class="side-tabs" role="tablist">
-          {#each [['all', t.session.tabAll], ['death', t.session.tabDeaths], ['fights', t.session.tabFights], ['objectives', t.session.tabObjectives]] as [v, l] (v)}
-            <button role="tab" aria-selected={momentTab === v} class:on={momentTab === v} onclick={() => (momentTab = v as typeof momentTab)}>{l}</button>
-          {/each}
-        </div>
+        <div class="side-title head">{t.session.moments} <span class="num dim">{shown.length}</span></div>
         <ol class="moments">
-          {#each moments as e (e.t + e.kind)}
+          {#each shown as e (e.t + e.kind)}
             {@const m = meta(e.kind)}
             <li>
               <button class="moment" class:live={current === e} style="--c:{m.color}" onclick={() => seek(Math.max(0, e.t - e.before))}>
                 <span class="m-icon"><Icon name={m.icon} size={15} /></span>
-                <span class="m-label">{eventLabel(e.label)}</span>
+                <span class="m-label">{eventLabel(e)}</span>
                 <span class="m-t num">{clock(e.t)}</span>
               </button>
             </li>
@@ -519,12 +497,46 @@
     font-size: 12.5px;
     color: var(--text-3);
   }
-  .cur {
+  .filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .fchip {
+    --c: var(--text-2);
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    color: var(--c);
+    gap: 6px;
+    height: 28px;
+    padding: 0 10px;
+    border-radius: 14px;
+    color: var(--text-2);
+    font-size: 12.5px;
     font-weight: 600;
+    box-shadow: inset 0 0 0 1px var(--seam-strong);
+  }
+  .fchip :global(svg) {
+    color: var(--c);
+  }
+  .fchip .n {
+    font-weight: 500;
+    color: var(--text-3);
+  }
+  .fchip:hover {
+    color: var(--text);
+    background: var(--panel-2);
+  }
+  .fchip.on {
+    color: var(--text);
+    background: color-mix(in oklab, var(--c) 18%, var(--panel-2));
+    box-shadow: inset 0 0 0 1px var(--c);
+  }
+  .fchip.on .n {
+    color: var(--text-2);
+  }
+  .fchip.all.on {
+    background: var(--panel-3);
+    box-shadow: inset 0 0 0 1px var(--seam-strong);
   }
   .dim {
     color: var(--text-3);
@@ -615,26 +627,6 @@
     border-left: 1px solid var(--seam);
     background: var(--panel);
   }
-  .side-tabs {
-    display: flex;
-    gap: 2px;
-    padding: 10px 10px 6px;
-  }
-  .side-tabs button {
-    flex: 1;
-    height: 28px;
-    border-radius: var(--r-sm);
-    color: var(--text-2);
-    font-weight: 600;
-    font-size: 12.5px;
-  }
-  .side-tabs button:hover {
-    color: var(--text);
-  }
-  .side-tabs button.on {
-    background: var(--panel-3);
-    color: var(--text);
-  }
   .moments {
     list-style: none;
     margin: 0;
@@ -692,6 +684,9 @@
     font-weight: 600;
     font-size: 13px;
     padding: 0 6px 6px;
+  }
+  .side-title.head {
+    padding: 14px 14px 4px;
   }
   .strip {
     display: grid;

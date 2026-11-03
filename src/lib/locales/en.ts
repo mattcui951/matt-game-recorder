@@ -139,6 +139,20 @@ export const en = {
     inhibitor: 'Inhibitor Destroyed',
     bookmark: 'Manual',
   } as Record<string, string>,
+  /** Short names for the filter chips. */
+  filters: {
+    kill: 'Kills',
+    death: 'Deaths',
+    assist: 'Assists',
+    ultimate: 'Ultimates',
+    turret: 'Turrets',
+    inhibitor: 'Inhibitors',
+    dragon: 'Dragons',
+    herald: 'Heralds',
+    baron: 'Barons',
+    victory: 'Victory',
+    bookmark: 'Manual',
+  } as Record<string, string>,
   /** Event labels as stored ("Killed by Garen"), rebuilt in the UI language. */
   eventLabel: {
     killed: (who: string) => `Killed ${who}`,
@@ -280,6 +294,10 @@ export const en = {
     clipStart: 'Clip start',
     clipEnd: 'Clip end',
     apm: 'APM',
+    group: (n: number, at: string) => `${n} moments from ${at}, click to zoom in`,
+    more: (n: number) => `${n} more`,
+    zoomHint: 'Click to zoom in',
+    streak: ['', '', 'Double', 'Triple', 'Quadra', 'Penta'],
   },
   dashboard: {
     waiting: 'Waiting for match',
@@ -800,15 +818,11 @@ export const en = {
     apm: 'APM stats',
     noApm: 'No APM data for this recording',
     filter: 'Filter events',
-    noEvents: 'No events in this recording.',
-    gameSettings: 'Game settings',
     tabAll: 'All',
-    tabDeaths: 'Deaths',
-    tabFights: 'Fights',
-    tabObjectives: 'Objectives',
     nothingInFilter: 'Nothing in this filter.',
     noGameEvents: 'No game events in this recording.',
     inSession: 'In this session',
+    moments: 'Moments',
   },
 };
 

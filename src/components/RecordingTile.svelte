@@ -37,6 +37,7 @@
 <style>
   .tile {
     display: grid;
+    align-content: start;
     gap: 7px;
     text-align: left;
     padding: 6px;
@@ -96,11 +97,16 @@
   }
   .sub {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 8px;
+    gap: 2px 8px;
     font-size: 11.5px;
     color: var(--text-3);
     min-width: 0;
+  }
+  /* The type stays on one line; event counts wrap after it when the tile is narrow. */
+  .kind {
+    white-space: nowrap;
   }
   .ev {
     display: inline-flex;

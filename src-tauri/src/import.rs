@@ -499,7 +499,7 @@ fn map_event(e: &Map<String, Value>) -> Option<RecEvent> {
         _ => return None,
     };
     let d = crate::settings::default_timing(kind);
-    Some(RecEvent { t: time, kind: kind.into(), label, multi, before: before.unwrap_or(d.before), after: after.unwrap_or(d.after) })
+    Some(RecEvent { t: time, kind: kind.into(), label, multi, before: before.unwrap_or(d.before), after: after.unwrap_or(d.after), ..Default::default() })
 }
 
 fn ms_to_local(ms: f64) -> Option<DateTime<Local>> {
@@ -1507,7 +1507,7 @@ mod tests {
     use super::*;
 
     fn media(kind: &str, events: &[&str]) -> OpMedia {
-        let events = events.iter().map(|k| RecEvent { t: 1.0, kind: k.to_string(), label: String::new(), multi: None, before: 0.0, after: 0.0 }).collect();
+        let events = events.iter().map(|k| RecEvent { t: 1.0, kind: k.to_string(), ..Default::default() }).collect();
         OpMedia { path: String::new(), kind: kind.into(), start_ms: 0.0, events }
     }
 

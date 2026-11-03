@@ -51,7 +51,7 @@
     <ol class="feed">
       {#each feed as e (e.t + e.kind)}
         {@const m = meta(e.kind)}
-        <li style="--c:{m.color}"><Icon name={m.icon} size={15} /><span class="lbl">{eventLabel(e.label)}</span><span class="num t">{clock(e.t)}</span></li>
+        <li style="--c:{m.color}"><Icon name={m.icon} size={15} /><span class="lbl">{eventLabel(e)}</span><span class="num t">{clock(e.t)}</span></li>
       {:else}
         <li class="none">{t.dashboard.empty}</li>
       {/each}

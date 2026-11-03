@@ -1,4 +1,5 @@
-//! Match results from the League client (LCU) for League matches whose result never arrived.
+//! Match results from the League client (LCU) for League matches whose result never arrived,
+//! and the champions behind the player names in older recordings' events.
 //!
 //! A recording gets its result from the Live Client's GameEnd event, but League can close before
 //! that event is read (a lost ARAM on 2026-10-31 ended with none). Outplayed imports made of
@@ -25,6 +26,7 @@ const EARLY_START: f64 = 180.0;
 /// One game of the client's match history, from the signed-in player's side.
 #[derive(Clone, Debug)]
 pub struct Game {
+    pub id: i64,
     pub created: DateTime<Local>,
     /// Seconds.
     pub duration: f64,
@@ -92,6 +94,7 @@ impl Lcu {
                     // Only the signed-in player is listed.
                     let me = g.pointer("/participants/0")?;
                     Some(Game {
+                        id: g.get("gameId")?.as_i64()?,
                         created: Local.timestamp_millis_opt(g.get("gameCreation")?.as_i64()?).single()?,
                         duration: g.get("gameDuration")?.as_f64()?,
                         champion: me.get("championId").and_then(Value::as_i64).and_then(|id| champions.get(&id).cloned()),
@@ -101,6 +104,57 @@ impl Lcu {
                 .collect(),
         )
     }
+}
+
+impl Lcu {
+    /// Every player of a game, normalized in-game name -> champion key (from the full game).
+    fn players(&self, game_id: i64, champions: &HashMap<i64, String>) -> Option<HashMap<String, String>> {
+        let g = self.get(&format!("/lol-match-history/v1/games/{game_id}"))?;
+        let champion_of: HashMap<i64, i64> = g
+            .get("participants")?
+            .as_array()?
+            .iter()
+            .filter_map(|p| Some((p.get("participantId")?.as_i64()?, p.get("championId")?.as_i64()?)))
+            .collect();
+        let mut out = HashMap::new();
+        // A player who hides their name shows up in events under their champion's name.
+        for c in champion_of.values().filter_map(|c| champions.get(c)) {
+            out.insert(c.to_lowercase(), c.clone());
+        }
+        for p in g.get("participantIdentities")?.as_array()? {
+            let Some(champion) = p.get("participantId").and_then(Value::as_i64).and_then(|id| champion_of.get(&id)).and_then(|c| champions.get(c)) else { continue };
+            for key in ["gameName", "summonerName"] {
+                if let Some(name) = p.pointer(&format!("/player/{key}")).and_then(Value::as_str).filter(|n| !n.is_empty()) {
+                    out.insert(name.trim().to_lowercase(), champion.clone());
+                }
+            }
+        }
+        Some(out)
+    }
+}
+
+/// The player named in an event label as the game wrote it ("Killed by Garen Main"), unless it
+/// is not a player ("a turret", "minions").
+pub fn player_in_label(label: &str) -> Option<&str> {
+    let name = ["Killed by ", "First Blood - ", "Killed ", "Assist on "].iter().find_map(|p| label.strip_prefix(p))?;
+    (!matches!(name, "a turret" | "minions" | "the enemy") && !name.is_empty()).then_some(name)
+}
+
+/// Fill in `champion` on kills, deaths and assists from a game's players; returns whether any changed.
+pub fn name_champions(events: &mut [crate::library::RecEvent], players: &HashMap<String, String>) -> bool {
+    let mut changed = false;
+    for e in events.iter_mut().filter(|e| e.champion.is_none() && matches!(e.kind.as_str(), "kill" | "death" | "assist")) {
+        let found = player_in_label(&e.label).and_then(|n| {
+            let n = n.trim().to_lowercase();
+            // "Kai'Sa" in a label, "kaisa" as a champion key.
+            players.get(&n).or_else(|| players.get(&n.replace([' ', '\'', '.', '&'], "")))
+        });
+        if let Some(c) = found {
+            e.champion = Some(c.clone());
+            changed = true;
+        }
+    }
+    changed
 }
 
 /// The history game a session recorded: same champion, and the recording started inside the
@@ -138,6 +192,8 @@ struct Checker {
     given_up: HashSet<String>,
     /// When a session newer than the whole history was first looked up.
     waiting: HashMap<String, Instant>,
+    /// Sessions whose event names were looked up (or cannot be): not again until the next start.
+    named: HashSet<String>,
 }
 
 impl Checker {
@@ -159,9 +215,25 @@ impl Checker {
             .collect()
     }
 
+    /// Sessions with kills, deaths or assists that name a player but not their champion (recorded
+    /// before champions were stored).
+    fn unnamed(&self, core: &Core) -> Vec<Session> {
+        let snap = core.library.snapshot();
+        snap.sessions
+            .into_iter()
+            .filter(|s| s.game == crate::game::LOL_GAME && s.champion_key.is_some() && s.capture_mode != "session" && !self.named.contains(&s.id))
+            .filter(|s| {
+                snap.recordings.iter().any(|r| {
+                    r.session_id == s.id && r.events.iter().any(|e| e.champion.is_none() && matches!(e.kind.as_str(), "kill" | "death" | "assist") && player_in_label(&e.label).is_some())
+                })
+            })
+            .collect()
+    }
+
     fn run(&mut self, core: &Core) {
         let missing = self.missing(core);
-        if missing.is_empty() {
+        let unnamed = self.unnamed(core);
+        if missing.is_empty() && unnamed.is_empty() {
             return;
         }
         let Some(lcu) = Lcu::connect() else { return };
@@ -193,6 +265,23 @@ impl Checker {
                 self.given_up.insert(s.id);
             }
         }
+        // Champions for the player names in older recordings, from each game's full player list.
+        for s in unnamed {
+            self.named.insert(s.id.clone());
+            let Some(g) = find_game(&s, &games) else { continue };
+            let Some(players) = lcu.players(g.id, champions) else { continue };
+            let mut named = 0;
+            for r in core.library.recordings_of(&s.id) {
+                let mut events = r.events.clone();
+                if name_champions(&mut events, &players) && core.library.update(&r.id, |r| r.events = events).is_ok() {
+                    named += 1;
+                }
+            }
+            if named > 0 {
+                log::info!("{} ({}): champions named in {named} recordings", s.title, s.started_at.format("%Y-%m-%d %H:%M"));
+                found += 1;
+            }
+        }
         if found > 0 {
             core.library_changed();
         }
@@ -216,7 +305,29 @@ mod tests {
     }
 
     fn game(created: &str, duration: f64, key: &str, win: bool) -> Game {
-        Game { created: at(created), duration, champion: Some(key.into()), win }
+        Game { id: 1, created: at(created), duration, champion: Some(key.into()), win }
+    }
+
+    #[test]
+    fn names_become_champions() {
+        let players: HashMap<String, String> = [("call anh phoong", "Pyke"), ("nautilus", "Nautilus"), ("melk and cookies", "Lulu"), ("kaisa", "Kaisa")]
+            .into_iter()
+            .map(|(a, b)| (a.to_string(), b.to_string()))
+            .collect();
+        let ev = |kind: &str, label: &str| crate::library::RecEvent { kind: kind.into(), label: label.into(), ..Default::default() };
+        let mut events = vec![
+            ev("death", "Killed by Call Anh Phoong"),
+            ev("kill", "Killed Nautilus"),
+            ev("assist", "Assist on Melk and Cookies"),
+            ev("death", "Killed by a turret"),
+            ev("kill", "First Blood - Nautilus"),
+            ev("kill", "Killed Someone Else"),
+            ev("death", "Killed by Kai'Sa"),
+        ];
+        assert!(name_champions(&mut events, &players));
+        let got: Vec<Option<&str>> = events.iter().map(|e| e.champion.as_deref()).collect();
+        assert_eq!(got, [Some("Pyke"), Some("Nautilus"), Some("Lulu"), None, Some("Nautilus"), None, Some("Kaisa")]);
+        assert!(!name_champions(&mut events, &players));
     }
 
     #[test]
