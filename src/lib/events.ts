@@ -111,3 +111,30 @@ function labelText(label: string): string {
   if (label === 'Kill' || label === 'Death' || label === 'Assist') return t.events[label.toLowerCase()];
   return objective(label);
 }
+
+// ---------- supercuts ----------
+
+/** Supercut choices, most exciting first: kill tiers, then the other kinds. Mirrors `supercut::key`. */
+export const SUPERCUT_KINDS = ['penta', 'quadra', 'triple', 'double', 'kill', 'death', 'assist', 'ultimate', 'baron', 'dragon', 'herald', 'inhibitor', 'turret', 'victory', 'bookmark'];
+const TIERS: Record<string, number> = { double: 2, triple: 3, quadra: 4, penta: 5 };
+export const MULTIKILL_TIERS = Object.keys(TIERS);
+
+/** The supercut kind of an event: its kind, or its multikill tier. */
+export function supercutKey(e: RecEvent): string {
+  if (e.kind !== 'multikill') return e.kind;
+  return ['double', 'double', 'double', 'triple', 'quadra', 'penta'][e.multi ?? 2] ?? 'double';
+}
+
+/** Label, color and icon of a supercut kind ("Penta Kill", "Single kills", "Deaths"...). */
+export function supercutMeta(k: string): EventMeta {
+  if (TIERS[k]) return { ...meta('multikill'), label: t.eventLabel.multi[TIERS[k]] };
+  if (k === 'kill') return { ...meta('kill'), label: t.supercut.singleKills };
+  return meta(k);
+}
+
+/** How many moments of each supercut kind the recordings have. */
+export function supercutCounts(recs: { events: RecEvent[] }[]): Record<string, number> {
+  const c: Record<string, number> = {};
+  for (const r of recs) for (const e of r.events) c[supercutKey(e)] = (c[supercutKey(e)] ?? 0) + 1;
+  return c;
+}

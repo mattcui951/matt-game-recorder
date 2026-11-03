@@ -139,6 +139,19 @@ export const en = {
     inhibitor: 'Inhibitor Destroyed',
     bookmark: 'Manual',
   } as Record<string, string>,
+  supercut: {
+    button: 'Supercut',
+    title: 'Supercut across matches',
+    dates: 'Dates',
+    presets: { today: 'Today', week: 'This week', month: 'This month', last30: 'Last 30 days', all: 'All time', custom: 'Custom' } as Record<string, string>,
+    from: 'From',
+    to: 'To',
+    kinds: 'Moments',
+    singleKills: 'Single kills',
+    summary: (moments: number, matches: number, length: string) => `${s(moments, 'moment', 'moments')} from ${s(matches, 'match', 'matches')}, about ${length}`,
+    pickKinds: 'Pick at least one kind of moment.',
+    nothing: 'No recorded moments in these dates.',
+  },
   /** Short names for the filter chips. */
   filters: {
     kill: 'Kills',

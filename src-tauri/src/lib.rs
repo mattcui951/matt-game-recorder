@@ -19,6 +19,7 @@ pub mod paths;
 mod results;
 pub mod update;
 pub mod settings;
+pub mod supercut;
 pub mod win;
 
 use std::io::Write;
@@ -231,6 +232,7 @@ pub fn run() {
             commands::disk_info,
             commands::quick_trim,
             commands::supercut,
+            commands::supercut_range,
             commands::cancel_job,
             commands::get_sprite,
             commands::toggle_screen_recorder,

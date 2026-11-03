@@ -441,6 +441,130 @@ pub fn render(spec: &RenderSpec, cancel: &AtomicBool, mut progress: impl FnMut(f
     Ok(())
 }
 
+/// Whether a video has an audio stream.
+pub fn has_audio(input: &Path) -> bool {
+    hidden_command(paths::ffprobe())
+        .args(["-v", "error", "-select_streams", "a:0", "-show_entries", "stream=index", "-of", "csv=p=0", p(input)])
+        .stdin(Stdio::null())
+        .output()
+        .is_ok_and(|o| !String::from_utf8_lossy(&o.stdout).trim().is_empty())
+}
+
+/// Like `render`, for moments picked out of long recordings (supercuts): every segment is cut on
+/// its own, seeking straight to it, then the parts are joined without re-encoding. `render`
+/// decodes each source from its start up to the cut, which is slow for late moments and many
+/// files. Parts share size, frame rate and codecs, so they join cleanly; a source without sound
+/// gets silence.
+pub fn render_parts(spec: &RenderSpec, cancel: &AtomicBool, mut progress: impl FnMut(f64)) -> Result<()> {
+    if spec.segments.is_empty() {
+        bail!(tr!("nothing to render", "没有可渲染的内容"));
+    }
+    let (w, h) = (spec.width / 2 * 2, spec.height / 2 * 2);
+    let parts_dir = spec.output.with_extension("parts");
+    std::fs::create_dir_all(&parts_dir)?;
+    let cleanup = || {
+        let _ = std::fs::remove_dir_all(&parts_dir);
+    };
+    let total: f64 = spec.segments.iter().map(|s| (s.end - s.start).max(0.1)).sum();
+    let mut done = 0.0;
+    let mut list = String::new();
+    let mut audio: Vec<(PathBuf, bool)> = Vec::new();
+    for (k, seg) in spec.segments.iter().enumerate() {
+        let dur = (seg.end - seg.start).max(0.1);
+        let sound = match audio.iter().find(|(f, _)| *f == seg.file) {
+            Some((_, a)) => *a,
+            None => {
+                let a = has_audio(&seg.file);
+                audio.push((seg.file.clone(), a));
+                a
+            }
+        };
+        let fit = match seg.crop.as_str() {
+            "fill" => format!("scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h}"),
+            "stretch" => format!("scale={w}:{h}"),
+            _ => format!("scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2"),
+        };
+        let mut vf = format!("{fit},setsar=1,fps={}", spec.fps);
+        if spec.watermark {
+            let font = r"C\:/Windows/Fonts/segoeuib.ttf";
+            vf.push_str(&format!(
+                ",drawtext=fontfile='{font}':text='Matt Game Recorder':fontcolor=white@0.55:fontsize={fs}:x=w-tw-{m}:y=h-th-{m}",
+                fs = (h / 36).max(12),
+                m = (h / 40).max(8)
+            ));
+        }
+        let vol = seg.volume / 100.0 * spec.master_volume / 100.0;
+        let part = parts_dir.join(format!("{k:04}.mp4"));
+        let mut cmd = hidden_command(paths::ffmpeg());
+        cmd.args(["-hide_banner", "-loglevel", "error", "-y", "-nostats", "-progress", "pipe:1"]);
+        cmd.args(["-ss", &format!("{:.3}", seg.start.max(0.0)), "-t", &format!("{dur:.3}")]).arg("-i").arg(&seg.file);
+        if sound {
+            cmd.args(["-filter_complex", &format!("[0:v]{vf}[v];[0:a]volume={vol:.3},aresample=48000[a]")]);
+        } else {
+            cmd.args(["-f", "lavfi", "-t", &format!("{dur:.3}"), "-i", "anullsrc=r=48000:cl=stereo"]);
+            cmd.args(["-filter_complex", &format!("[0:v]{vf}[v];[1:a]anull[a]")]);
+        }
+        cmd.args(["-map", "[v]", "-map", "[a]"]);
+        let mut venc = video_encoder_args(&spec.encoder, "quality", spec.bitrate_kbps, spec.fps);
+        if family(&spec.encoder) != "cpu" {
+            venc.extend(["-pix_fmt".into(), "yuv420p".into()]);
+        }
+        cmd.args(&venc).args(audio_encoder_args()).arg(&part);
+        cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        let mut child = cmd.spawn().context(tr!("failed to start ffmpeg", "无法启动 ffmpeg"))?;
+        let stdout = child.stdout.take().unwrap();
+        let stderr = child.stderr.take().unwrap();
+        let err_thread = std::thread::spawn(move || {
+            let mut s = String::new();
+            let _ = std::io::Read::read_to_string(&mut BufReader::new(stderr), &mut s);
+            s
+        });
+        for line in BufReader::new(stdout).lines().map_while(|l| l.ok()) {
+            if cancel.load(Ordering::Relaxed) {
+                let _ = child.kill();
+                let _ = child.wait();
+                cleanup();
+                bail!("cancelled");
+            }
+            if let Some(us) = line.strip_prefix("out_time_us=") {
+                if let Ok(us) = us.trim().parse::<f64>() {
+                    // The join at the end takes a moment too: keep the last 2% for it.
+                    progress(((done + (us / 1e6).min(dur)) / total * 0.98).clamp(0.0, 0.98));
+                }
+            }
+        }
+        let status = child.wait()?;
+        let err = err_thread.join().unwrap_or_default();
+        if !status.success() {
+            cleanup();
+            let err = err.trim();
+            bail!(tr!("export failed: {err}", "导出失败：{err}"));
+        }
+        done += dur;
+        list.push_str(&format!("file '{}'\n", part.to_string_lossy().replace('\\', "/").replace('\'', "'\\''")));
+    }
+    let list_path = parts_dir.join("parts.txt");
+    std::fs::write(&list_path, list)?;
+    let out = hidden_command(paths::ffmpeg())
+        .args(["-hide_banner", "-loglevel", "error", "-y", "-f", "concat", "-safe", "0", "-i"])
+        .arg(&list_path)
+        .args(["-c", "copy", "-movflags", "+faststart"])
+        .arg(&spec.output)
+        .stdin(Stdio::null())
+        .output()
+        .context(tr!("failed to start ffmpeg", "无法启动 ffmpeg"));
+    cleanup();
+    let out = out?;
+    if !out.status.success() {
+        let _ = std::fs::remove_file(&spec.output);
+        let err = String::from_utf8_lossy(&out.stderr);
+        let err = err.trim();
+        bail!(tr!("export failed: {err}", "导出失败：{err}"));
+    }
+    progress(1.0);
+    Ok(())
+}
+
 /// Re-encode a whole video into this app's format (AV1/HEVC/H.264 + Opus), keeping its size and
 /// frame rate. NVIDIA: decode and encode both stay on the GPU. Runs at below-normal priority.
 /// While `paused` is set the ffmpeg process is suspended in place, losing no work.

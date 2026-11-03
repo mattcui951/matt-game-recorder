@@ -1,6 +1,7 @@
 <script lang="ts">
   import Icon from '../components/Icon.svelte';
   import ImportPanel from '../components/ImportPanel.svelte';
+  import RangeSupercut from '../components/RangeSupercut.svelte';
   import ImportProgress from '../components/ImportProgress.svelte';
   import Popover from '../components/Popover.svelte';
   import RecordingTile from '../components/RecordingTile.svelte';
@@ -18,6 +19,7 @@
   let query = $state('');
   let filterOpen = $state(false);
   let importOpen = $state(false);
+  let supercutOpen = $state(false);
   let groupBy = $state<'game-date' | 'date' | 'game'>('game-date');
   let sort = $state<'newest' | 'oldest' | 'largest' | 'longest'>('newest');
   let games = $state<string[]>([]);
@@ -267,6 +269,14 @@
     </nav>
     {#if tab === 'sessions'}
       <div class="find">
+        <Popover bind:open={supercutOpen} width={360}>
+          {#snippet anchor(toggleOpen)}
+            <button class="btn ghost sm" onclick={toggleOpen}><Icon name="bolt" size={15} />{t.supercut.button}</button>
+          {/snippet}
+          {#snippet children(close)}
+            <RangeSupercut onstarted={close} />
+          {/snippet}
+        </Popover>
         <Popover bind:open={importOpen} width={340}>
           {#snippet anchor(toggleOpen)}
             <button class="btn ghost sm" onclick={toggleOpen}><Icon name="restore" size={15} />{t.library.import}</button>

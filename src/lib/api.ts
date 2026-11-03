@@ -22,6 +22,7 @@ export const api = {
   diskInfo: () => invoke<DiskInfo>('disk_info'),
   quickTrim: (id: string, start: number, end: number, title: string) => invoke<Recording>('quick_trim', { id, start, end, title }),
   supercut: (id: string, kinds: string[], before: number, after: number) => invoke<string>('supercut', { id, kinds, before, after }),
+  supercutRange: (from: string, to: string, kinds: string[], before: number, after: number) => invoke<string>('supercut_range', { from, to, kinds, before, after }),
   cancelJob: (id: string) => invoke<void>('cancel_job', { id }),
   getSprite: (id: string) => invoke<string | null>('get_sprite', { id }),
   toggleScreenRecorder: () => invoke<void>('toggle_screen_recorder'),

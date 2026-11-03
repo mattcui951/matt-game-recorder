@@ -244,61 +244,84 @@ fn render_codec(core: &Core, codec: &str) -> String {
     ffmpeg::best_encoder(&want)
 }
 
+/// Instant supercut of one recording: the picked kinds of moment (kill tiers included, see
+/// `supercut::key`), saved next to it.
 #[tauri::command]
 pub fn supercut(core: Core_, id: String, kinds: Vec<String>, before: f64, after: f64) -> Res<String> {
     let core = core.inner().clone();
     let src = core.library.recording(&id).ok_or_else(|| tr!("Recording not found", "找不到该录像"))?;
-    let mut wins: Vec<(f64, f64, RecEvent)> = src
-        .events
-        .iter()
-        .filter(|ev| kinds.iter().any(|k| *k == ev.kind || (k == "kill" && ev.kind == "multikill")))
-        .map(|ev| ((ev.t - before).max(0.0), (ev.t + after).min(src.duration.max(ev.t + after)), ev.clone()))
-        .collect();
+    let wins = crate::supercut::windows(&src, &kinds, before, after);
     if wins.is_empty() {
         return Err(tr!("No events of the selected types in this recording.", "这段录像里没有所选类型的事件。"));
     }
-    wins.sort_by(|a, b| a.0.total_cmp(&b.0));
-    // Merge overlapping windows so nothing plays twice.
-    let mut merged: Vec<(f64, f64, Vec<RecEvent>)> = Vec::new();
-    for (a, b, ev) in wins {
-        match merged.last_mut() {
-            Some(m) if a <= m.1 => {
-                m.1 = m.1.max(b);
-                m.2.push(ev);
-            }
-            _ => merged.push((a, b, vec![ev])),
-        }
-    }
+    let session = core.library.session(&src.session_id).ok_or_else(|| tr!("Recording not found", "找不到该录像"))?;
     let title = format!("{} supercut", src.title);
+    let source = Some(src.id.clone());
+    Ok(render_supercut(core, vec![(src, wins)], session, title, source))
+}
+
+/// Supercut across every match from `from` to `to` (inclusive, "YYYY-MM-DD"): the picked kinds
+/// of moment from each match in turn, oldest first, in one video under Video editor.
+#[tauri::command]
+pub fn supercut_range(core: Core_, from: String, to: String, kinds: Vec<String>, before: f64, after: f64) -> Res<String> {
+    let core = core.inner().clone();
+    let day = |d: &str| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").map_err(e);
+    let (from, to) = (day(&from)?, day(&to)?);
+    let parts: Vec<(Recording, Vec<crate::supercut::Window>)> = crate::supercut::sources(&core.library, from, to)
+        .into_iter()
+        .map(|r| {
+            let w = crate::supercut::windows(&r, &kinds, before, after);
+            (r, w)
+        })
+        .filter(|(_, w)| !w.is_empty())
+        .collect();
+    if parts.is_empty() {
+        return Err(tr!("No moments of the selected kinds in these dates.", "这段日期里没有所选类型的时刻。"));
+    }
+    let session = match core.library.snapshot().sessions.into_iter().find(|s| s.game == "Video editor" && s.title == "Supercuts") {
+        Some(s) => s,
+        None => core.library.create_session("Video editor", "Supercuts", "export").map_err(e)?,
+    };
+    let (a, b) = (from.format("%Y-%m-%d").to_string(), to.format("%Y-%m-%d").to_string());
+    let title = if from == to { tr!("Supercut {a}", "集锦 {a}") } else { tr!("Supercut {a} to {b}", "集锦 {a} 至 {b}") };
+    Ok(render_supercut(core, parts, session, title, None))
+}
+
+/// Render supercut windows (from one or many recordings, in order) into `session` as a job.
+fn render_supercut(core: Arc<Core>, parts: Vec<(Recording, Vec<crate::supercut::Window>)>, session: crate::library::Session, title: String, source: Option<String>) -> String {
     let job_title = crate::i18n::title(&title);
     let app = core.app.clone();
-    let job = core.clone().jobs.spawn(&app, "supercut", &job_title, move |ctx| {
-        let session = core.library.session(&src.session_id).ok_or_else(|| anyhow::anyhow!("session not found"))?;
+    core.clone().jobs.spawn(&app, "supercut", &job_title, move |ctx| {
         let out = crate::paths::unique_file(&session.dir, &title, "mp4");
-        let segments: Vec<Segment> = merged.iter().map(|(a, b, _)| Segment { file: src.path(), start: *a, end: *b, volume: 100.0, crop: "fit".into() }).collect();
+        // The frame of the first source; others are fitted into it.
+        let first = &parts[0].0;
+        let segments: Vec<Segment> = parts
+            .iter()
+            .flat_map(|(r, ws)| ws.iter().map(move |w| Segment { file: r.path(), start: w.start, end: w.end, volume: 100.0, crop: "fit".into() }))
+            .collect();
         let settings = core.settings();
         let spec = ffmpeg::RenderSpec {
             segments,
-            width: src.width.max(2),
-            height: src.height.max(2),
-            fps: (src.fps.round() as u32).clamp(10, 120),
+            width: first.width.max(2),
+            height: first.height.max(2),
+            fps: (first.fps.round() as u32).clamp(10, 120),
             encoder: ffmpeg::best_encoder(&settings.video.encoder),
             bitrate_kbps: settings.video.bitrate_kbps,
             master_volume: 100.0,
             watermark: settings.general.watermark,
             output: out.clone(),
         };
-        ffmpeg::render(&spec, &ctx.cancel, |p| ctx.progress(p))?;
+        ffmpeg::render_parts(&spec, &ctx.cancel, |p| ctx.progress(p))?;
         let mut events = Vec::new();
         let mut offset = 0.0;
-        for (a, b, evs) in &merged {
-            events.extend(evs.iter().map(|ev| RecEvent { t: offset + (ev.t - a), ..ev.clone() }));
-            offset += b - a;
+        for w in parts.iter().flat_map(|(_, ws)| ws) {
+            events.extend(w.events.iter().map(|ev| RecEvent { t: offset + (ev.t - w.start), ..ev.clone() }));
+            offset += w.end - w.start;
         }
-        let r = core.library.add_file(&session, "supercut", &title, &out, events, vec![], Some(src.id.clone()))?;
+        let r = core.library.add_file(&session, "supercut", &title, &out, events, vec![], source)?;
+        core.library_changed();
         Ok(Some(r.id))
-    });
-    Ok(job)
+    })
 }
 
 #[tauri::command]

@@ -8,7 +8,8 @@
   import { api } from '../lib/api';
   import { app, artSrc, back, cacheSrc, errorText, go, mediaSrc, recordingsOf, sessionById, setUiPref, toast, ui } from '../lib/state.svelte';
   import { championName, clock, displayTitle, modeName, parseClock } from '../lib/format.svelte';
-  import { eventLabel, FILTER_KINDS, filterKey, meta } from '../lib/events';
+  import { eventLabel, FILTER_KINDS, filterKey, meta, MULTIKILL_TIERS, supercutCounts } from '../lib/events';
+  import SupercutKinds from '../components/SupercutKinds.svelte';
   import { t } from '../lib/i18n.svelte';
   import type { Project, Recording } from '../lib/types';
 
@@ -100,7 +101,14 @@
   }
 
   let scOpen = $state(false);
-  let scKinds = $state<string[]>(['kill']);
+  // Kinds for this recording's supercut: its kill streaks to start with, else its kills.
+  const scCounts = $derived(rec ? supercutCounts([{ events: rec.events.filter((e) => e.kind !== 'bookmark') }]) : {});
+  let scKinds = $state<string[]>([]);
+  $effect(() => {
+    rec?.id;
+    const tiers = MULTIKILL_TIERS.filter((k) => scCounts[k]);
+    scKinds = tiers.length ? tiers : scCounts.kill ? ['kill'] : [];
+  });
   let scBefore = $state(5);
   let scAfter = $state(2);
   async function createSupercut() {
@@ -289,19 +297,11 @@
                 {#snippet children()}
                   <div class="sc">
                     <div class="sc-title">{t.session.supercut}</div>
-                    <div class="sc-kinds">
-                      {#each kindsHere.filter((k) => k !== 'bookmark') as k (k)}
-                        <button class="sc-kind" class:on={scKinds.includes(k)} style="--c:{meta(k).color}" onclick={() => (scKinds = scKinds.includes(k) ? scKinds.filter((x) => x !== k) : [...scKinds, k])}>
-                          <Icon name={meta(k).icon} size={15} /><span>{meta(k).label}</span>
-                          <span class="num cnt">{rec.events.filter((e) => filterKey(e) === k).length}</span>
-                          {#if scKinds.includes(k)}<Icon name="check" size={14} />{/if}
-                        </button>
-                      {/each}
-                    </div>
+                    <SupercutKinds counts={scCounts} bind:selected={scKinds} />
                     <div class="sc-title sub">{t.session.clipBuffer}</div>
                     <label class="sc-row"><span>{t.session.before}</span><Slider value={scBefore} min={0} max={20} onchange={(v) => (scBefore = v)} label={t.session.secondsBefore} suffix={t.common.seconds} /></label>
                     <label class="sc-row"><span>{t.session.after}</span><Slider value={scAfter} min={0} max={20} onchange={(v) => (scAfter = v)} label={t.session.secondsAfter} suffix={t.common.seconds} /></label>
-                    <button class="btn primary" disabled={!scKinds.some((k) => kindsHere.includes(k))} onclick={createSupercut}><Icon name="bolt" size={15} />{t.session.createSupercut}</button>
+                    <button class="btn primary" disabled={!scKinds.some((k) => scCounts[k])} onclick={createSupercut}><Icon name="bolt" size={15} />{t.session.createSupercut}</button>
                   </div>
                 {/snippet}
               </Popover>
@@ -587,33 +587,6 @@
   .sc-title.sub {
     margin-top: 6px;
     font-size: 12.5px;
-    color: var(--text-3);
-  }
-  .sc-kinds {
-    display: grid;
-    gap: 4px;
-  }
-  .sc-kind {
-    display: grid;
-    grid-template-columns: 18px 1fr auto 16px;
-    align-items: center;
-    gap: 8px;
-    height: 32px;
-    padding: 0 10px;
-    border-radius: var(--r-md);
-    background: var(--panel-2);
-    color: var(--text-2);
-    text-align: left;
-  }
-  .sc-kind > :global(svg:first-child) {
-    color: var(--c);
-  }
-  .sc-kind.on {
-    color: var(--text);
-    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--c) 60%, transparent);
-  }
-  .cnt {
-    font-size: 12px;
     color: var(--text-3);
   }
   .sc-row {
