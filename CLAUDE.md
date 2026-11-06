@@ -21,6 +21,10 @@ an Outplayed replacement. Public repo, released through GitHub with an in-app up
 
 ## Releasing
 
+In App HQ, call the `propose_release` tool with the version and the release notes: App HQ runs
+the tests, bumps the version files, tags, pushes, watches the build and checks `latest.json`.
+Commit first. Without App HQ (a terminal session), do it by hand:
+
 Bump the version in `package.json`, `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json`,
 commit, then push an annotated tag (`git tag -a vX.Y.Z -m "notes"`). Never publish a release that
 could become "latest" without `latest.json`. Do not wait on the build in the foreground; watch it

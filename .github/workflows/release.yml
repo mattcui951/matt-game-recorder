@@ -54,9 +54,13 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      # Restores what warm-cache.yml saved on main (a tag build can only restore caches saved on
+      # the default branch). A tag's own cache could never be reused, so it saves none.
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          shared-key: release
+          save-if: false
 
       - run: npm ci
 
@@ -80,5 +84,12 @@ jobs:
             **Install:** download `Matt.Game.Recorder_*_x64-setup.exe` below and run it. Already have Matt Game Recorder? It offers this update by itself.
             Windows may say "Windows protected your PC" because the installer is not code-signed: click **More info**, then **Run anyway**.
             Needs Windows 10 or 11. Records League of Legends automatically; the screen recorder works with anything.
-          releaseDraft: false
+          # A draft until every file is attached: "latest" keeps pointing at the previous
+          # release meanwhile, so downloads and update checks never see a half-built one.
+          releaseDraft: true
           prerelease: false
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "${{ github.ref_name }}" --repo "${{ github.repository }}" --draft=false --latest

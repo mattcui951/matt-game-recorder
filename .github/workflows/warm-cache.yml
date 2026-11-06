@@ -1,0 +1,73 @@
+# Keeps the Rust build cache warm on main, so release builds reuse it instead of compiling every
+# crate from scratch. Releases build from tags, and a tag build can only restore caches saved on
+# the default branch; release.yml restores what this saves (same shared-key).
+#
+# Runs when the Rust dependencies change, twice a week (GitHub deletes a cache unused for 7 days),
+# and by hand. When the cache is already current it only restores it, which keeps it alive.
+name: Warm build cache
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src-tauri/Cargo.lock'
+      - 'src-tauri/Cargo.toml'
+      - '.github/workflows/**'
+  schedule:
+    - cron: '17 6 * * 1,4'
+  workflow_dispatch:
+
+concurrency:
+  group: warm-cache
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  FFMPEG_ASSET: ffmpeg-8.1-win64-gpl.zip
+  FFMPEG_SHA256: a8b70ead7d7840d38a4e8dba12cb47e87536d412b4f93dc424c27ea36943e3d7
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        id: cache
+        with:
+          workspaces: src-tauri
+          shared-key: release
+
+      # The build checks that the bundled resources exist, so it needs FFmpeg too.
+      - name: FFmpeg (pinned build)
+        if: steps.cache.outputs.cache-hit != 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download deps-ffmpeg --repo "$GITHUB_REPOSITORY" --pattern "$FFMPEG_ASSET" --dir "$RUNNER_TEMP"
+          echo "$FFMPEG_SHA256  $RUNNER_TEMP/$FFMPEG_ASSET" | sha256sum --check
+          mkdir -p src-tauri/binaries
+          unzip -o "$RUNNER_TEMP/$FFMPEG_ASSET" ffmpeg.exe ffprobe.exe -d src-tauri/binaries
+
+      - uses: actions/setup-node@v5
+        if: steps.cache.outputs.cache-hit != 'true'
+        with:
+          node-version: 22
+          cache: npm
+
+      - if: steps.cache.outputs.cache-hit != 'true'
+        run: npm ci
+
+      # The same compiles as release.yml: its tests, then the release build (without packaging,
+      # which needs the signing key).
+      - name: Build what a release builds
+        shell: bash
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          cargo test --manifest-path src-tauri/Cargo.toml --lib --no-run
+          npx tauri build --no-bundle
