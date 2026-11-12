@@ -21,6 +21,17 @@
   let rate = $state(1);
   let showControls = $state(true);
   let hideTimer: ReturnType<typeof setTimeout> | undefined;
+  // In the window the controls sit under the video, so they never cover the game's HUD.
+  // Full screen has no room beside the video: they lie over it and fade out when the pointer rests.
+  let fs = $state(false);
+  $effect(() => {
+    const sync = () => {
+      fs = !!box && document.fullscreenElement === box;
+      if (fs) nudge();
+    };
+    document.addEventListener('fullscreenchange', sync);
+    return () => document.removeEventListener('fullscreenchange', sync);
+  });
 
   // Remembered in settings (saved shortly after the slider stops).
   $effect(() => {
@@ -93,7 +104,7 @@
   const rates = [0.25, 0.5, 1, 1.5, 2];
 </script>
 
-<div class="player" bind:this={box} onpointermove={nudge} class:hide={!showControls && !paused} role="region" aria-label={t.player.region}>
+<div class="player" bind:this={box} onpointermove={nudge} class:fs class:hide={!showControls && (fs || !paused)} role="region" aria-label={t.player.region}>
   {#if image}
     <img class="still" {src} alt="" />
   {:else}
@@ -136,37 +147,42 @@
     background: var(--media-bg);
     border-radius: var(--r-lg);
     overflow: hidden;
-    display: grid;
-    place-items: center;
+    display: flex;
+    flex-direction: column;
   }
   .player.hide {
     cursor: none;
   }
   video,
   .still {
+    flex: 1;
+    min-height: 0;
     width: 100%;
-    height: 100%;
     object-fit: contain;
     display: block;
   }
   .controls {
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    flex: none;
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 28px 12px 10px;
-    background: linear-gradient(to top, var(--media-scrim), transparent);
-    /* Over video: always light text, whatever the theme. */
+    padding: 6px 12px;
+    /* On the dark media surface: always light text, whatever the theme. */
     --text: var(--media-ink);
     --text-3: var(--media-ink-2);
     --you: var(--media-accent);
     color: var(--media-ink);
+  }
+  .fs .controls {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 28px 12px 10px;
+    background: linear-gradient(to top, var(--media-scrim), transparent);
     transition: opacity 200ms;
   }
-  .hide .controls {
+  .fs.hide .controls {
     opacity: 0;
   }
   .c-btn {

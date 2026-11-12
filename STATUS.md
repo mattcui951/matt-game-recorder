@@ -1,11 +1,16 @@
 # Status
 
-Updated: 2026-11-05
-Version: 0.4.0, released 2026-11-03
+Updated: 2026-11-11
+Version: 0.4.1, released 2026-11-11
 
 ## In progress
 
-- Nothing open. The last session ended after the v0.4.0 release.
+- Nothing open.
+
+## Unverified
+
+- 0.4.1 full screen player: controls lie over the video and fade when the pointer rests, also
+  while paused. The browser preview cannot enter full screen, so this was not seen working.
 
 ## Next
 
@@ -18,6 +23,7 @@ Version: 0.4.0, released 2026-11-03
 
 ## Recently done
 
+- Player controls sit under the video, so they no longer cover the game's HUD (0.4.1)
 - APM off by default; with it off only the keyboard is watched (0.4.0)
 - Lighter on the PC: Raw Input for APM, idle results check, leaner encoder option
 - Supercuts: kill tiers (double to penta), across every match in a date range

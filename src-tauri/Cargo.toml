@@ -1,6 +1,6 @@
 [package]
 name = "matt-game-recorder"
-version = "0.4.0"
+version = "0.4.1"
 description = "Matt Game Recorder - local League of Legends recorder"
 authors = ["Matt"]
 edition = "2021"

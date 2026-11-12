@@ -6,6 +6,7 @@ import { mockIPC, mockWindows } from '@tauri-apps/api/mocks';
 
 const media = new URLSearchParams(location.search).get('media') ?? '';
 const dev = (what: string) => fetch(`${media}dev/${what}`).then((r) => r.json());
+const idleUpdate = { phase: 'idle', version: null, progress: null, error: null, checkedAt: null };
 
 mockWindows('main');
 mockIPC(
@@ -13,7 +14,13 @@ mockIPC(
     const a = (args ?? {}) as Record<string, unknown>;
     switch (cmd) {
       case 'bootstrap':
-        return { settings: await dev('settings'), mediaUrl: media, version: '0.1.0', status: await dev('status') };
+        return { settings: await dev('settings'), mediaUrl: media, version: '0.1.0', status: await dev('status'), systemLanguage: 'en', update: idleUpdate, updatedFrom: null };
+      case 'check_update':
+        return idleUpdate;
+      case 'import_cpu_assist':
+        return { on: false, available: false, speedup: null, measuring: false };
+      case 'champion_names_zh':
+        return {};
       case 'get_library':
         return dev('library');
       case 'get_status':
