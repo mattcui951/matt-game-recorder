@@ -250,11 +250,14 @@ impl MatchTracker {
 }
 
 /// Data Dragon key of a player-list entry ("MonkeyKing"), from `rawChampionName`
-/// ("game_character_displayname_MonkeyKing") or else the display name without spaces.
+/// ("game_character_displayname_MonkeyKing") or else the display name without spaces. Some raw
+/// names carry a suffix ("game_character_displayname_Aatrox_Name"); keys never hold '_', so the
+/// key is the first segment after the prefix.
 fn champion_key(p: &Value) -> Option<String> {
     p.get("rawChampionName")
         .and_then(Value::as_str)
-        .and_then(|r| r.rsplit('_').next())
+        .and_then(|r| r.strip_prefix("game_character_displayname_"))
+        .and_then(|r| r.split('_').next())
         .filter(|k| !k.is_empty())
         .map(str::to_string)
         .or_else(|| p.get("championName").and_then(Value::as_str).map(|c| c.replace([' ', '\'', '.'], "")))
@@ -372,5 +375,14 @@ mod tests {
         let pairs: Vec<(&str, Option<&str>)> = got.iter().map(|e| (e.kind.as_str(), e.champion.as_deref())).collect();
         assert_eq!(pairs, [("kill", Some("MonkeyKing")), ("death", Some("Pyke")), ("kill", Some("MonkeyKing"))]);
         assert_eq!(tr.champion_key.as_deref(), Some("Tryndamere"));
+    }
+
+    /// Raw names with a suffix after the key still give the Data Dragon key.
+    #[test]
+    fn champion_key_ignores_raw_suffix() {
+        let key = |raw: &str, name: &str| champion_key(&json!({ "rawChampionName": raw, "championName": name }));
+        assert_eq!(key("game_character_displayname_Aatrox_Name", "Aatrox").as_deref(), Some("Aatrox"));
+        assert_eq!(key("game_character_displayname_MonkeyKing", "Wukong").as_deref(), Some("MonkeyKing"));
+        assert_eq!(key("", "Kai'Sa").as_deref(), Some("KaiSa"));
     }
 }

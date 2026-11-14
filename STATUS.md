@@ -9,6 +9,7 @@ Version: 0.4.1, released 2026-11-11
 
 ## Unverified
 
+- Aatrox key fix: unit-tested only; check his icon on the next Aatrox match. 3 older matches (11-05 Match 04, 11-07 Match 04 and 07) keep kill events naming "Name", champion unknown
 - 0.4.1 full screen player: controls lie over the video and fade when the pointer rests, also
   while paused. The browser preview cannot enter full screen, so this was not seen working.
 
@@ -23,6 +24,7 @@ Version: 0.4.1, released 2026-11-11
 
 ## Recently done
 
+- Champion key from raw names with a suffix (Aatrox showed "A" and no art); fixed the 11-13 match by hand (0.4.2)
 - Player controls sit under the video, so they no longer cover the game's HUD (0.4.1)
 - APM off by default; with it off only the keyboard is watched (0.4.0)
 - Lighter on the PC: Raw Input for APM, idle results check, leaner encoder option
