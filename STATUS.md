@@ -1,6 +1,6 @@
 # Status
 
-Updated: 2026-11-11
+Updated: 2026-11-15
 Version: 0.4.1, released 2026-11-11
 
 ## In progress
@@ -21,6 +21,11 @@ Version: 0.4.1, released 2026-11-11
 ## Known issues
 
 - A silent `/S` reinstall drops the Public Desktop shortcut; it has to be recreated.
+- A yellow border around the game while recording is not the recorder: its FFmpeg capture asks for
+  no border and Windows allows it (desktop apps may turn off the border). It comes from another app
+  capturing the screen without that permission, on 2026-11-15 the Codex app's computer use
+  (packaged, border permission "Prompt"). Check `ConsentStore\graphicsCaptureWithoutBorder`
+  under HKCU CapabilityAccessManager: `LastUsedTimeStop` 0 means a capture is running now.
 
 ## Recently done
 
