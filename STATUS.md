@@ -1,7 +1,7 @@
 # Status
 
 Updated: 2026-11-15
-Version: 0.4.2, released 2026-11-14; next changes below are not released yet
+Version: 0.4.3, released 2026-11-15
 
 ## In progress
 
@@ -32,12 +32,12 @@ Version: 0.4.2, released 2026-11-14; next changes below are not released yet
 
 ## Recently done
 
-- Not released yet: less duplicated code. FFmpeg render, supercut render and import conversion
+- Less duplicated code (0.4.3). FFmpeg render, supercut render and import conversion
   share one runner (`ffmpeg::run_progress`), covered by new tests on generated videos; one
   confirm dialog component; job results offered through `offerResult` (no polling); shared
   settings-page styles in `app.css`; supercut/clip names translated in notifications and job
   titles too. Settings pages compared pixel for pixel before and after.
-- Not released yet: the back arrow on a match always returns to the match list (it used to step
+- (0.4.3) The back arrow on a match always returns to the match list (it used to step
   back through every match that had opened itself after a game); date bar day chips read
   "Nov 5 Thu 7 matches" / "11月5日 周四 7局"; thumbnails skip black frames
 - Champion key from raw names with a suffix (Aatrox showed "A" and no art); fixed the 11-13 match by hand (0.4.2)
