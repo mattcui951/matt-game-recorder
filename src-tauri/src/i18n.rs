@@ -75,6 +75,11 @@ pub fn title(t: &str) -> String {
         Some(i) if t.ends_with(')') && t[i + 2..t.len() - 1].chars().all(|c| c.is_ascii_digit()) => (&t[..i], &t[i..]),
         _ => (t, ""),
     };
+    for (en, zh) in [(" supercut", " 集锦"), (" clip", " 片段")] {
+        if let Some(of) = base.strip_suffix(en) {
+            return format!("{}{zh}{suffix}", title(of));
+        }
+    }
     for (en, zh) in [("Match ", "对局 "), ("Session ", "会话 "), ("Screen recording ", "屏幕录制 "), ("Project ", "项目 ")] {
         if let Some(n) = base.strip_prefix(en) {
             if !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()) {
@@ -98,6 +103,8 @@ mod tests {
         assert_eq!(title("Match 03"), "对局 03");
         assert_eq!(title("Triple Kill (2)"), "三杀 (2)");
         assert_eq!(title("Screen recording 12"), "屏幕录制 12");
+        assert_eq!(title("Match 02 supercut"), "对局 02 集锦");
+        assert_eq!(title("Match 02 clip (2)"), "对局 02 片段 (2)");
         assert_eq!(title("Match against Bob"), "Match against Bob");
         assert_eq!(title("Kill (x)"), "Kill (x)");
         ZH.store(false, Ordering::Relaxed);

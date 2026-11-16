@@ -102,6 +102,22 @@ export function toast(text: string, tone: Toast['tone'] = 'info', action?: Toast
   setTimeout(() => (app.toasts = app.toasts.filter((t) => t.id !== id)), tone === 'error' ? 7000 : 4000);
 }
 
+// Jobs whose result the user is offered when they finish (see `offerResult`).
+const resultHandlers = new Map<string, (resultId: string) => void>();
+
+function jobEnded(j: Job) {
+  const open = resultHandlers.get(j.id);
+  resultHandlers.delete(j.id);
+  if (open && j.state === 'done' && j.resultId) toast(t.common.ready(j.title), 'ok', { label: t.common.open, run: () => open(j.resultId!) });
+}
+
+/** When `job` finishes, a toast offers to open what it made. */
+export function offerResult(job: string, open: (resultId: string) => void) {
+  resultHandlers.set(job, open);
+  const j = app.jobs[job];
+  if (j && j.state !== 'running') jobEnded(j);
+}
+
 export function errorText(e: unknown): string {
   return typeof e === 'string' ? e : e instanceof Error ? e.message : JSON.stringify(e);
 }
@@ -253,7 +269,10 @@ export async function init() {
     app.jobs[j.id] = j;
     if (j.state === 'error') toast(t.common.jobFailed(j.title, j.message ?? t.common.failedLower), 'error');
     if (j.state === 'done' && j.kind === 'import' && j.message) toast(j.message, 'ok');
-    if (j.state !== 'running') setTimeout(() => delete app.jobs[j.id], j.state === 'done' ? 6000 : 300);
+    if (j.state !== 'running') {
+      jobEnded(j);
+      setTimeout(() => delete app.jobs[j.id], j.state === 'done' ? 6000 : 300);
+    }
   });
   app.cpuAssist = await api.importCpuAssist().catch(() => app.cpuAssist);
   await listen<Appearance>('appearance', (e) => {

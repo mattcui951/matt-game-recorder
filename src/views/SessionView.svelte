@@ -6,7 +6,7 @@
   import Slider from '../components/Slider.svelte';
   import Timeline from '../components/Timeline.svelte';
   import { api } from '../lib/api';
-  import { app, artSrc, backToLibrary, cacheSrc, errorText, go, mediaSrc, recordingsOf, sessionById, setUiPref, toast, ui } from '../lib/state.svelte';
+  import { app, artSrc, backToLibrary, cacheSrc, errorText, go, mediaSrc, offerResult, recordingsOf, sessionById, setUiPref, toast, ui } from '../lib/state.svelte';
   import { championName, clock, displayTitle, modeName, parseClock } from '../lib/format.svelte';
   import { eventLabel, FILTER_KINDS, filterKey, meta, MULTIKILL_TIERS, supercutCounts } from '../lib/events';
   import SupercutKinds from '../components/SupercutKinds.svelte';
@@ -117,19 +117,10 @@
       const job = await api.supercut(rec.id, scKinds, scBefore, scAfter);
       scOpen = false;
       toast(t.session.buildingSupercut, 'info');
-      watchJob(job, (id) => (selectedId = id));
+      offerResult(job, (id) => (selectedId = id));
     } catch (e) {
       toast(errorText(e), 'error');
     }
-  }
-  function watchJob(job: string, onDone: (resultId: string) => void) {
-    const iv = setInterval(() => {
-      const j = app.jobs[job];
-      if (j && j.state === 'done' && j.resultId) {
-        clearInterval(iv);
-        toast(t.common.ready(j.title), 'ok', { label: t.common.open, run: () => onDone(j.resultId!) });
-      } else if (j && j.state !== 'running') clearInterval(iv);
-    }, 400);
   }
 
   let projects = $state<Project[]>([]);

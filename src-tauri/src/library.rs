@@ -491,6 +491,14 @@ impl Library {
         self.create_session_at(game, title, capture_mode, Local::now())
     }
 
+    /// The "Video editor" session that collects exports or supercuts ("Exports", "Supercuts").
+    pub fn editor_session(&self, title: &str) -> Result<Session> {
+        match self.sessions_where(|s, _| s.game == "Video editor" && s.title == title).into_iter().next() {
+            Some(s) => Ok(s),
+            None => self.create_session("Video editor", title, "export"),
+        }
+    }
+
     /// Create a session dated `now` (imports use the original recording time).
     pub fn create_session_at(&self, game: &str, title: &str, capture_mode: &str, now: DateTime<Local>) -> Result<Session> {
         let root = self.root();

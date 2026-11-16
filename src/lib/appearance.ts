@@ -2,6 +2,8 @@
 // Everything is CSS custom properties on <html>, so every view follows without its own code.
 
 import { emit } from '@tauri-apps/api/event';
+import { getCurrentWebview } from '@tauri-apps/api/webview';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { t } from './i18n.svelte';
 import { bestInk, contrast, DEFAULT_THEME, isHex, THEMES, TOKENS, type Colors, type ThemeDef, type TokenKey } from './themes';
 import type { Appearance, CustomTheme } from './types';
@@ -134,11 +136,11 @@ export function applyAppearance(a: Appearance) {
   const zoom = Math.min(150, Math.max(80, a.uiScale || 100)) / 100;
   if (zoom !== lastZoom) {
     lastZoom = zoom;
-    import('@tauri-apps/api/webview').then((m) => m.getCurrentWebview().setZoom(zoom)).catch(() => {});
+    getCurrentWebview().setZoom(zoom).catch(() => {});
   }
   if (colors.bg !== lastBg) {
     lastBg = colors.bg;
-    import('@tauri-apps/api/window').then((m) => m.getCurrentWindow().setBackgroundColor(colors.bg)).catch(() => {});
+    getCurrentWindow().setBackgroundColor(colors.bg).catch(() => {});
   }
 }
 

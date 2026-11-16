@@ -139,7 +139,7 @@
     <div class="ver"><span class="num">v{app.version}</span><button class="link" onclick={() => api.quitApp()}>{t.settings.quit}</button></div>
   </nav>
 
-  <div class="content">
+  <div class="content settings-page">
     {#if page === 'games'}
       <h1>{t.settings.games.title}</h1>
       <p class="lead">{t.settings.games.lead}</p>
@@ -513,53 +513,11 @@
   .content > * {
     max-width: 760px;
   }
-  h1 {
-    font-size: 24px;
-  }
-  .lead {
-    color: var(--text-3);
-    margin: 4px 0 20px;
-  }
-  h2 {
-    font-size: 17px;
-  }
-  .sub-lead {
-    color: var(--text-3);
-    font-size: 12.5px;
-    margin: 2px 0 10px;
-  }
-  .sec {
-    padding: 22px 0 18px;
-    border-top: 1px solid var(--seam);
-  }
-  .sec:first-of-type {
-    border-top: 0;
-    padding-top: 4px;
-  }
-  .row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 24px;
-    min-height: 44px;
-    padding: 4px 0;
-  }
-  .row > span:first-child {
-    display: grid;
-    gap: 2px;
-  }
-  .row small {
-    color: var(--text-3);
-    font-size: 12px;
-  }
   .row.gap {
     margin-top: 12px;
   }
   .row.off > span:first-child {
     color: var(--text-3);
-  }
-  .row.sub {
-    padding-left: 16px;
   }
   .ctl {
     width: 320px;

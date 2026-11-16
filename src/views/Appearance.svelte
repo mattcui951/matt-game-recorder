@@ -376,16 +376,6 @@
   .ap {
     max-width: 760px;
   }
-  h1 {
-    font-size: 24px;
-  }
-  .lead {
-    color: var(--text-3);
-    margin: 4px 0 20px;
-  }
-  h2 {
-    font-size: 17px;
-  }
   h3 {
     margin: 18px 0 8px;
     font-size: 12.5px;
@@ -393,43 +383,11 @@
     color: var(--text-2);
     letter-spacing: 0.02em;
   }
-  .sub-lead {
-    color: var(--text-3);
-    font-size: 12.5px;
-    margin: 2px 0 12px;
-  }
-  .sec {
-    padding: 22px 0 18px;
-    border-top: 1px solid var(--seam);
-  }
-  .sec:first-of-type {
-    border-top: 0;
-    padding-top: 4px;
-  }
   .sec-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 16px;
-  }
-  .row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 24px;
-    min-height: 44px;
-    padding: 4px 0;
-  }
-  .row > span:first-child {
-    display: grid;
-    gap: 2px;
-  }
-  .row small {
-    color: var(--text-3);
-    font-size: 12px;
-  }
-  .row.sub {
-    padding-left: 16px;
   }
   .ctl {
     width: 260px;

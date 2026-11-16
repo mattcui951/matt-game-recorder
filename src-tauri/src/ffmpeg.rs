@@ -255,13 +255,12 @@ fn note_speed(encoder: &str, pixels_per_sec: f64, save_now: bool) {
 }
 
 /// Turns ffmpeg's `frame=` progress lines into a speed, skipping gaps (a suspended process).
-struct RateMeter<'a> {
-    encoder: &'a str,
+struct RateMeter {
     pixels: f64,
     last: Option<(u64, Instant)>,
 }
 
-impl RateMeter<'_> {
+impl RateMeter {
     fn frame(&mut self, frame: u64) -> Option<f64> {
         let now = Instant::now();
         let Some((f0, t0)) = self.last else {
@@ -378,67 +377,18 @@ pub struct RenderSpec {
     pub output: PathBuf,
 }
 
-/// Re-encode segments into one file (trim, scale/crop to the frame, volume, concat).
-/// `progress` receives 0..1. Returns early with an error if `cancel` is set.
-pub fn render(spec: &RenderSpec, cancel: &AtomicBool, mut progress: impl FnMut(f64)) -> Result<()> {
-    if spec.segments.is_empty() {
-        bail!(tr!("nothing to render", "没有可渲染的内容"));
-    }
-    let (w, h) = (spec.width / 2 * 2, spec.height / 2 * 2);
-    let mut cmd = hidden_command(paths::ffmpeg());
-    cmd.args(["-hide_banner", "-loglevel", "error", "-y", "-nostats", "-progress", "pipe:1"]);
-    let mut inputs: Vec<&Path> = Vec::new();
-    for seg in &spec.segments {
-        if !inputs.contains(&seg.file.as_path()) {
-            inputs.push(&seg.file);
-        }
-    }
-    for i in &inputs {
-        cmd.arg("-i").arg(i);
-    }
-    let mut graph = String::new();
-    let mut total = 0.0;
-    for (k, seg) in spec.segments.iter().enumerate() {
-        let idx = inputs.iter().position(|i| *i == seg.file.as_path()).unwrap();
-        let fit = match seg.crop.as_str() {
-            "fill" => format!("scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h}"),
-            "stretch" => format!("scale={w}:{h}"),
-            _ => format!("scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2"),
-        };
-        let vol = seg.volume / 100.0 * spec.master_volume / 100.0;
-        graph.push_str(&format!(
-            "[{idx}:v]trim=start={s:.3}:end={e:.3},setpts=PTS-STARTPTS,{fit},setsar=1,fps={fps}[v{k}];\
-             [{idx}:a]atrim=start={s:.3}:end={e:.3},asetpts=PTS-STARTPTS,volume={vol:.3}[a{k}];",
-            s = seg.start,
-            e = seg.end,
-            fps = spec.fps
-        ));
-        total += (seg.end - seg.start).max(0.0);
-    }
-    for k in 0..spec.segments.len() {
-        graph.push_str(&format!("[v{k}][a{k}]"));
-    }
-    graph.push_str(&format!("concat=n={}:v=1:a=1[cv][ca]", spec.segments.len()));
-    let vout = if spec.watermark {
-        let font = r"C\:/Windows/Fonts/segoeuib.ttf";
-        graph.push_str(&format!(
-            ";[cv]drawtext=fontfile='{font}':text='Matt Game Recorder':fontcolor=white@0.55:fontsize={fs}:x=w-tw-{m}:y=h-th-{m}[wv]",
-            fs = (h / 36).max(12),
-            m = (h / 40).max(8)
-        ));
-        "[wv]"
-    } else {
-        "[cv]"
-    };
-    cmd.arg("-filter_complex").arg(&graph);
-    cmd.args(["-map", vout, "-map", "[ca]"]);
-    let mut venc = video_encoder_args(&spec.encoder, "quality", spec.bitrate_kbps, spec.fps);
-    if family(&spec.encoder) != "cpu" {
-        venc.extend(["-pix_fmt".into(), "yuv420p".into()]);
-    }
-    cmd.args(&venc);
-    cmd.args(audio_encoder_args());
-    cmd.args(["-movflags", "+faststart"]).arg(&spec.output);
+/// How a `-progress` run of ffmpeg ended.
+enum Ended {
+    Done,
+    /// Cancelled, or `on_line` asked to stop: ffmpeg was killed.
+    Stopped,
+    /// ffmpeg failed; its error output.
+    Failed(String),
+}
+
+/// Run an ffmpeg command that reports with `-progress pipe:1`, handing each line to `on_line`
+/// (false stops it). While `paused` is set the process is suspended in place, losing no work.
+fn run_progress(cmd: &mut std::process::Command, cancel: &AtomicBool, paused: Option<&AtomicBool>, mut on_line: impl FnMut(&str) -> bool) -> Result<Ended> {
     cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
     let mut child = cmd.spawn().context(tr!("failed to start ffmpeg", "无法启动 ffmpeg"))?;
     let stdout = child.stdout.take().unwrap();
@@ -448,31 +398,141 @@ pub fn render(spec: &RenderSpec, cancel: &AtomicBool, mut progress: impl FnMut(f
         let _ = std::io::Read::read_to_string(&mut BufReader::new(stderr), &mut s);
         s
     });
-    for line in BufReader::new(stdout).lines().map_while(|l| l.ok()) {
-        if cancel.load(Ordering::Relaxed) {
-            let _ = child.kill();
-            let _ = child.wait();
-            let _ = std::fs::remove_file(&spec.output);
-            bail!("cancelled");
+    let pid = child.id();
+    let finished = AtomicBool::new(false);
+    let stopped = std::thread::scope(|scope| {
+        if let Some(paused) = paused {
+            scope.spawn(|| {
+                let mut suspended = false;
+                while !finished.load(Ordering::Relaxed) {
+                    // A cancel resumes it, so the read loop below sees the cancel.
+                    let want = paused.load(Ordering::Relaxed) && !cancel.load(Ordering::Relaxed);
+                    if want != suspended && crate::win::suspend_process(pid, want) {
+                        suspended = want;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(250));
+                }
+                if suspended {
+                    crate::win::suspend_process(pid, false);
+                }
+            });
         }
-        if let Some(us) = line.strip_prefix("out_time_us=") {
-            if let Ok(us) = us.trim().parse::<f64>() {
-                progress((us / 1e6 / total.max(0.001)).clamp(0.0, 1.0));
-            }
-        }
+        let stopped = BufReader::new(stdout).lines().map_while(|l| l.ok()).any(|line| cancel.load(Ordering::Relaxed) || !on_line(&line));
+        finished.store(true, Ordering::Relaxed);
+        stopped
+    });
+    if stopped {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Ok(Ended::Stopped);
     }
     let status = child.wait()?;
     let err = err_thread.join().unwrap_or_default();
-    if !status.success() {
-        let _ = std::fs::remove_file(&spec.output);
-        let err = err.trim();
-        bail!(tr!("export failed: {err}", "导出失败：{err}"));
-    }
-    progress(1.0);
-    Ok(())
+    Ok(if status.success() { Ended::Done } else { Ended::Failed(err.trim().to_string()) })
 }
 
-/// Whether a video has an audio stream.
+/// Seconds written so far, from a `-progress` line.
+fn out_time(line: &str) -> Option<f64> {
+    line.strip_prefix("out_time_us=")?.trim().parse::<f64>().ok().map(|us| us / 1e6)
+}
+
+const PROGRESS_ARGS: [&str; 7] = ["-hide_banner", "-loglevel", "error", "-y", "-nostats", "-progress", "pipe:1"];
+
+impl RenderSpec {
+    /// The video filters every segment gets: fit into the (even) frame, frame rate, watermark.
+    fn video_filter(&self, seg: &Segment) -> String {
+        let (w, h) = (self.width / 2 * 2, self.height / 2 * 2);
+        let fit = match seg.crop.as_str() {
+            "fill" => format!("scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h}"),
+            "stretch" => format!("scale={w}:{h}"),
+            _ => format!("scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2"),
+        };
+        let mut vf = format!("{fit},setsar=1,fps={}", self.fps);
+        if self.watermark {
+            let font = r"C\:/Windows/Fonts/segoeuib.ttf";
+            vf.push_str(&format!(
+                ",drawtext=fontfile='{font}':text='Matt Game Recorder':fontcolor=white@0.55:fontsize={fs}:x=w-tw-{m}:y=h-th-{m}",
+                fs = (h / 36).max(12),
+                m = (h / 40).max(8)
+            ));
+        }
+        vf
+    }
+
+    fn volume(&self, seg: &Segment) -> f64 {
+        seg.volume / 100.0 * self.master_volume / 100.0
+    }
+
+    fn encoder_args(&self) -> Vec<String> {
+        let mut a = video_encoder_args(&self.encoder, "quality", self.bitrate_kbps, self.fps);
+        if family(&self.encoder) != "cpu" {
+            a.extend(["-pix_fmt".into(), "yuv420p".into()]);
+        }
+        a.extend(audio_encoder_args());
+        a
+    }
+}
+
+fn export_failed(err: &str) -> anyhow::Error {
+    anyhow::anyhow!(tr!("export failed: {err}", "导出失败：{err}"))
+}
+
+/// Re-encode segments into one file in a single ffmpeg run (trim, fit to the frame, volume,
+/// concat). `progress` receives 0..1.
+pub fn render(spec: &RenderSpec, cancel: &AtomicBool, mut progress: impl FnMut(f64)) -> Result<()> {
+    if spec.segments.is_empty() {
+        bail!(tr!("nothing to render", "没有可渲染的内容"));
+    }
+    let mut cmd = hidden_command(paths::ffmpeg());
+    cmd.args(PROGRESS_ARGS);
+    let mut inputs: Vec<&Path> = Vec::new();
+    for seg in &spec.segments {
+        if !inputs.contains(&seg.file.as_path()) {
+            inputs.push(&seg.file);
+            cmd.arg("-i").arg(&seg.file);
+        }
+    }
+    let mut graph = String::new();
+    for (k, seg) in spec.segments.iter().enumerate() {
+        let idx = inputs.iter().position(|i| *i == seg.file.as_path()).unwrap();
+        graph.push_str(&format!(
+            "[{idx}:v]trim=start={s:.3}:end={e:.3},setpts=PTS-STARTPTS,{vf}[v{k}];\
+             [{idx}:a]atrim=start={s:.3}:end={e:.3},asetpts=PTS-STARTPTS,volume={vol:.3}[a{k}];",
+            s = seg.start,
+            e = seg.end,
+            vf = spec.video_filter(seg),
+            vol = spec.volume(seg),
+        ));
+    }
+    for k in 0..spec.segments.len() {
+        graph.push_str(&format!("[v{k}][a{k}]"));
+    }
+    graph.push_str(&format!("concat=n={}:v=1:a=1[v][a]", spec.segments.len()));
+    cmd.arg("-filter_complex").arg(&graph).args(["-map", "[v]", "-map", "[a]"]);
+    cmd.args(spec.encoder_args()).args(["-movflags", "+faststart"]).arg(&spec.output);
+    let total: f64 = spec.segments.iter().map(|s| (s.end - s.start).max(0.0)).sum();
+    let ended = run_progress(&mut cmd, cancel, None, |line| {
+        if let Some(t) = out_time(line) {
+            progress((t / total.max(0.001)).clamp(0.0, 1.0));
+        }
+        true
+    })?;
+    match ended {
+        Ended::Done => {
+            progress(1.0);
+            Ok(())
+        }
+        Ended::Stopped => {
+            let _ = std::fs::remove_file(&spec.output);
+            bail!("cancelled")
+        }
+        Ended::Failed(err) => {
+            let _ = std::fs::remove_file(&spec.output);
+            Err(export_failed(&err))
+        }
+    }
+}
+
 pub fn has_audio(input: &Path) -> bool {
     hidden_command(paths::ffprobe())
         .args(["-v", "error", "-select_streams", "a:0", "-show_entries", "stream=index", "-of", "csv=p=0", p(input)])
@@ -484,122 +544,66 @@ pub fn has_audio(input: &Path) -> bool {
 /// Like `render`, for moments picked out of long recordings (supercuts): every segment is cut on
 /// its own, seeking straight to it, then the parts are joined without re-encoding. `render`
 /// decodes each source from its start up to the cut, which is slow for late moments and many
-/// files. Parts share size, frame rate and codecs, so they join cleanly; a source without sound
-/// gets silence.
+/// files. A source without sound gets silence.
 pub fn render_parts(spec: &RenderSpec, cancel: &AtomicBool, mut progress: impl FnMut(f64)) -> Result<()> {
     if spec.segments.is_empty() {
         bail!(tr!("nothing to render", "没有可渲染的内容"));
     }
-    let (w, h) = (spec.width / 2 * 2, spec.height / 2 * 2);
     let parts_dir = spec.output.with_extension("parts");
     std::fs::create_dir_all(&parts_dir)?;
-    let cleanup = || {
-        let _ = std::fs::remove_dir_all(&parts_dir);
-    };
+    let result = render_parts_in(spec, &parts_dir, cancel, &mut progress);
+    let _ = std::fs::remove_dir_all(&parts_dir);
+    if result.is_err() {
+        let _ = std::fs::remove_file(&spec.output);
+    }
+    result
+}
+
+fn render_parts_in(spec: &RenderSpec, parts_dir: &Path, cancel: &AtomicBool, progress: &mut impl FnMut(f64)) -> Result<()> {
     let total: f64 = spec.segments.iter().map(|s| (s.end - s.start).max(0.1)).sum();
     let mut done = 0.0;
     let mut list = String::new();
-    let mut audio: Vec<(PathBuf, bool)> = Vec::new();
+    let mut sound: HashMap<&Path, bool> = HashMap::new();
     for (k, seg) in spec.segments.iter().enumerate() {
         let dur = (seg.end - seg.start).max(0.1);
-        let sound = match audio.iter().find(|(f, _)| *f == seg.file) {
-            Some((_, a)) => *a,
-            None => {
-                let a = has_audio(&seg.file);
-                audio.push((seg.file.clone(), a));
-                a
-            }
-        };
-        let fit = match seg.crop.as_str() {
-            "fill" => format!("scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h}"),
-            "stretch" => format!("scale={w}:{h}"),
-            _ => format!("scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2"),
-        };
-        let mut vf = format!("{fit},setsar=1,fps={}", spec.fps);
-        if spec.watermark {
-            let font = r"C\:/Windows/Fonts/segoeuib.ttf";
-            vf.push_str(&format!(
-                ",drawtext=fontfile='{font}':text='Matt Game Recorder':fontcolor=white@0.55:fontsize={fs}:x=w-tw-{m}:y=h-th-{m}",
-                fs = (h / 36).max(12),
-                m = (h / 40).max(8)
-            ));
-        }
-        let vol = seg.volume / 100.0 * spec.master_volume / 100.0;
+        let vf = spec.video_filter(seg);
         let part = parts_dir.join(format!("{k:04}.mp4"));
         let mut cmd = hidden_command(paths::ffmpeg());
-        cmd.args(["-hide_banner", "-loglevel", "error", "-y", "-nostats", "-progress", "pipe:1"]);
+        cmd.args(PROGRESS_ARGS);
         cmd.args(["-ss", &format!("{:.3}", seg.start.max(0.0)), "-t", &format!("{dur:.3}")]).arg("-i").arg(&seg.file);
-        if sound {
-            cmd.args(["-filter_complex", &format!("[0:v]{vf}[v];[0:a]volume={vol:.3},aresample=48000[a]")]);
+        if *sound.entry(&seg.file).or_insert_with(|| has_audio(&seg.file)) {
+            cmd.args(["-filter_complex", &format!("[0:v]{vf}[v];[0:a]volume={:.3},aresample=48000[a]", spec.volume(seg))]);
         } else {
             cmd.args(["-f", "lavfi", "-t", &format!("{dur:.3}"), "-i", "anullsrc=r=48000:cl=stereo"]);
             cmd.args(["-filter_complex", &format!("[0:v]{vf}[v];[1:a]anull[a]")]);
         }
-        cmd.args(["-map", "[v]", "-map", "[a]"]);
-        let mut venc = video_encoder_args(&spec.encoder, "quality", spec.bitrate_kbps, spec.fps);
-        if family(&spec.encoder) != "cpu" {
-            venc.extend(["-pix_fmt".into(), "yuv420p".into()]);
-        }
-        cmd.args(&venc).args(audio_encoder_args()).arg(&part);
-        cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
-        let mut child = cmd.spawn().context(tr!("failed to start ffmpeg", "无法启动 ffmpeg"))?;
-        let stdout = child.stdout.take().unwrap();
-        let stderr = child.stderr.take().unwrap();
-        let err_thread = std::thread::spawn(move || {
-            let mut s = String::new();
-            let _ = std::io::Read::read_to_string(&mut BufReader::new(stderr), &mut s);
-            s
-        });
-        for line in BufReader::new(stdout).lines().map_while(|l| l.ok()) {
-            if cancel.load(Ordering::Relaxed) {
-                let _ = child.kill();
-                let _ = child.wait();
-                cleanup();
-                bail!("cancelled");
+        cmd.args(["-map", "[v]", "-map", "[a]"]).args(spec.encoder_args()).arg(&part);
+        let ended = run_progress(&mut cmd, cancel, None, |line| {
+            if let Some(t) = out_time(line) {
+                // The join at the end takes a moment too: keep the last 2% for it.
+                progress(((done + t.min(dur)) / total * 0.98).clamp(0.0, 0.98));
             }
-            if let Some(us) = line.strip_prefix("out_time_us=") {
-                if let Ok(us) = us.trim().parse::<f64>() {
-                    // The join at the end takes a moment too: keep the last 2% for it.
-                    progress(((done + (us / 1e6).min(dur)) / total * 0.98).clamp(0.0, 0.98));
-                }
-            }
-        }
-        let status = child.wait()?;
-        let err = err_thread.join().unwrap_or_default();
-        if !status.success() {
-            cleanup();
-            let err = err.trim();
-            bail!(tr!("export failed: {err}", "导出失败：{err}"));
+            true
+        })?;
+        match ended {
+            Ended::Done => {}
+            Ended::Stopped => bail!("cancelled"),
+            Ended::Failed(err) => return Err(export_failed(&err)),
         }
         done += dur;
         list.push_str(&format!("file '{}'\n", part.to_string_lossy().replace('\\', "/").replace('\'', "'\\''")));
     }
     let list_path = parts_dir.join("parts.txt");
     std::fs::write(&list_path, list)?;
-    let out = hidden_command(paths::ffmpeg())
-        .args(["-hide_banner", "-loglevel", "error", "-y", "-f", "concat", "-safe", "0", "-i"])
-        .arg(&list_path)
-        .args(["-c", "copy", "-movflags", "+faststart"])
-        .arg(&spec.output)
-        .stdin(Stdio::null())
-        .output()
-        .context(tr!("failed to start ffmpeg", "无法启动 ffmpeg"));
-    cleanup();
-    let out = out?;
-    if !out.status.success() {
-        let _ = std::fs::remove_file(&spec.output);
-        let err = String::from_utf8_lossy(&out.stderr);
-        let err = err.trim();
-        bail!(tr!("export failed: {err}", "导出失败：{err}"));
-    }
+    run(&["-f", "concat", "-safe", "0", "-i", p(&list_path), "-c", "copy", "-movflags", "+faststart", p(&spec.output)])?;
     progress(1.0);
     Ok(())
 }
 
 /// Re-encode a whole video into this app's format (AV1/HEVC/H.264 + Opus), keeping its size and
-/// frame rate. NVIDIA: decode and encode both stay on the GPU. Runs at below-normal priority.
-/// While `paused` is set the ffmpeg process is suspended in place, losing no work.
-/// Returns Ok(false) when `abort` turned true (e.g. a match started) and the file was dropped.
+/// frame rate. NVIDIA: decode and encode both stay on the GPU. Runs at below-normal priority and
+/// can be paused. Returns Ok(false) when `abort` turned true (e.g. a match started) and the file
+/// was dropped.
 #[allow(clippy::too_many_arguments)] // job plumbing: cancel, pause and abort are separate signals
 pub fn convert(
     input: &Path,
@@ -621,7 +625,7 @@ pub fn convert(
         let mut cmd = crate::win::hidden_command_low(paths::ffmpeg());
         // SVT-AV1 logs on its own; errors only.
         cmd.env("SVT_LOG", "1");
-        cmd.args(["-hide_banner", "-loglevel", "error", "-y", "-nostats", "-progress", "pipe:1"]);
+        cmd.args(PROGRESS_ARGS);
         if hw {
             cmd.args(["-hwaccel", "cuda", "-hwaccel_output_format", "cuda"]);
         }
@@ -631,70 +635,30 @@ pub fn convert(
         cmd.args(video_encoder_args(encoder, "performance", bitrate_kbps, fps));
         cmd.args(audio_encoder_args());
         cmd.args(["-movflags", "+faststart"]).arg(output);
-        cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
-        let mut child = cmd.spawn().context(tr!("failed to start ffmpeg", "无法启动 ffmpeg"))?;
-        let stdout = child.stdout.take().unwrap();
-        let stderr = child.stderr.take().unwrap();
-        let err_thread = std::thread::spawn(move || {
-            let mut s = String::new();
-            let _ = std::io::Read::read_to_string(&mut BufReader::new(stderr), &mut s);
-            s
-        });
-        let pid = child.id();
-        let finished = AtomicBool::new(false);
-        let stopped_early = std::thread::scope(|scope| {
-            // Pause = suspend ffmpeg; resume continues exactly where it stopped.
-            scope.spawn(|| {
-                let mut suspended = false;
-                while !finished.load(Ordering::Relaxed) {
-                    let want = paused.load(Ordering::Relaxed) && !cancel.load(Ordering::Relaxed);
-                    if want != suspended && crate::win::suspend_process(pid, want) {
-                        suspended = want;
-                    }
-                    std::thread::sleep(std::time::Duration::from_millis(250));
-                }
-                if suspended {
-                    crate::win::suspend_process(pid, false);
-                }
-            });
-            let mut early = false;
-            let mut meter = RateMeter { encoder, pixels: src.width as f64 * src.height as f64, last: None };
-            for line in BufReader::new(stdout).lines().map_while(|l| l.ok()) {
-                if cancel.load(Ordering::Relaxed) || abort() {
-                    early = true;
-                    break;
-                }
-                if let Some(f) = line.strip_prefix("frame=").and_then(|f| f.trim().parse::<u64>().ok()) {
-                    if let Some(pps) = meter.frame(f) {
-                        note_speed(meter.encoder, pps, false);
-                    }
-                }
-                if let Some(us) = line.strip_prefix("out_time_us=") {
-                    if let Ok(us) = us.trim().parse::<f64>() {
-                        progress((us / 1e6 / src.duration).clamp(0.0, 1.0));
-                    }
-                }
+        let mut meter = RateMeter { pixels: src.width as f64 * src.height as f64, last: None };
+        let ended = run_progress(&mut cmd, cancel, Some(paused), |line| {
+            if let Some(pps) = line.strip_prefix("frame=").and_then(|f| f.trim().parse::<u64>().ok()).and_then(|f| meter.frame(f)) {
+                note_speed(encoder, pps, false);
             }
-            finished.store(true, Ordering::Relaxed);
-            early
-        });
-        if stopped_early {
-            let _ = child.kill();
-            let _ = child.wait();
-            let _ = std::fs::remove_file(output);
-            if cancel.load(Ordering::Relaxed) {
-                bail!("cancelled");
+            if let Some(t) = out_time(line) {
+                progress((t / src.duration).clamp(0.0, 1.0));
             }
-            return Ok(false);
+            !abort()
+        })?;
+        match ended {
+            Ended::Done => Ok(true),
+            Ended::Stopped => {
+                let _ = std::fs::remove_file(output);
+                if cancel.load(Ordering::Relaxed) {
+                    bail!("cancelled");
+                }
+                Ok(false)
+            }
+            Ended::Failed(err) => {
+                let _ = std::fs::remove_file(output);
+                bail!(tr!("conversion failed: {err}", "转换失败：{err}"))
+            }
         }
-        let status = child.wait()?;
-        let err = err_thread.join().unwrap_or_default();
-        if !status.success() {
-            let _ = std::fs::remove_file(output);
-            let err = err.trim();
-            bail!(tr!("conversion failed: {err}", "转换失败：{err}"));
-        }
-        Ok(true)
     };
     match run_once(gpu) {
         // Some sources cannot be GPU-decoded; retry with CPU decoding.
@@ -710,11 +674,94 @@ pub fn convert(
 mod tests {
     use super::*;
 
+    fn scratch(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("mgr-{name}-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// A test video of `secs` seconds, with a tone or without sound.
+    fn source(dir: &Path, name: &str, secs: u32, sound: bool) -> PathBuf {
+        let out = dir.join(name);
+        let d = secs.to_string();
+        let mut args = vec!["-f", "lavfi", "-i", "testsrc2=s=320x180:r=30", "-t", &d];
+        if sound {
+            args.extend(["-f", "lavfi", "-i", "sine=f=440:r=48000", "-t", &d]);
+        }
+        args.extend(["-c:v", "libx264", "-g", "30", "-pix_fmt", "yuv420p", p(&out)]);
+        run(&args).unwrap();
+        out
+    }
+
+    fn spec(dir: &Path, segments: Vec<Segment>) -> RenderSpec {
+        RenderSpec { segments, width: 320, height: 180, fps: 30, encoder: "libx264".into(), bitrate_kbps: 2000, master_volume: 100.0, watermark: true, output: dir.join("out.mp4") }
+    }
+
+    fn seg(file: &Path, start: f64, end: f64) -> Segment {
+        Segment { file: file.to_path_buf(), start, end, volume: 100.0, crop: "fit".into() }
+    }
+
+    #[test]
+    fn render_joins_segments() {
+        let dir = scratch("render");
+        let (a, b) = (source(&dir, "a.mp4", 6, true), source(&dir, "b.mp4", 6, true));
+        let spec = spec(&dir, vec![seg(&a, 1.0, 3.0), seg(&b, 2.0, 5.0)]);
+        let mut last = 0.0;
+        render(&spec, &AtomicBool::new(false), |p| last = p).unwrap();
+        let out = probe(&spec.output).unwrap();
+        let sound = has_audio(&spec.output);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!((out.duration - 5.0).abs() < 0.3, "duration {}", out.duration);
+        assert!(sound && last == 1.0);
+    }
+
+    #[test]
+    fn render_parts_gives_silent_sources_sound() {
+        let dir = scratch("parts");
+        let (a, b) = (source(&dir, "a.mp4", 6, true), source(&dir, "b.mp4", 6, false));
+        let spec = spec(&dir, vec![seg(&a, 1.0, 3.0), seg(&b, 2.0, 5.0)]);
+        let mut last = 0.0;
+        render_parts(&spec, &AtomicBool::new(false), |p| last = p).unwrap();
+        let out = probe(&spec.output).unwrap();
+        let sound = has_audio(&spec.output);
+        let parts_left = spec.output.with_extension("parts").exists();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!((out.duration - 5.0).abs() < 0.3, "duration {}", out.duration);
+        assert!(sound && last == 1.0 && !parts_left);
+    }
+
+    #[test]
+    fn cancelled_render_leaves_nothing() {
+        let dir = scratch("cancel");
+        let a = source(&dir, "a.mp4", 4, true);
+        let spec = spec(&dir, vec![seg(&a, 0.0, 4.0)]);
+        let r = render(&spec, &AtomicBool::new(true), |_| {});
+        let r2 = render_parts(&spec, &AtomicBool::new(true), |_| {});
+        let left = spec.output.exists() || spec.output.with_extension("parts").exists();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(r.is_err() && r2.is_err() && !left);
+    }
+
+    #[test]
+    fn convert_reencodes_or_drops_on_abort() {
+        let dir = scratch("convert");
+        let a = source(&dir, "a.mp4", 4, true);
+        let (out, never) = (dir.join("c.mp4"), AtomicBool::new(false));
+        let done = convert(&a, &out, "libx264", 2000, &never, &never, || false, |_| {}).unwrap();
+        let dur = probe(&out).unwrap().duration;
+        let dropped = dir.join("d.mp4");
+        let kept = convert(&a, &dropped, "libx264", 2000, &never, &never, || true, |_| {}).unwrap();
+        let cancelled = convert(&a, &dropped, "libx264", 2000, &AtomicBool::new(true), &never, || false, |_| {});
+        let left = dropped.exists();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(done && (dur - 4.0).abs() < 0.3, "duration {dur}");
+        assert!(!kept && cancelled.is_err() && !left);
+    }
+
     /// A 10 s video, black for its first 4 s: the thumbnail asked for at 3 s comes from the lit part.
     #[test]
     fn thumbnail_skips_black_frames() {
-        let dir = std::env::temp_dir().join(format!("mgr-thumb-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = scratch("thumb");
         let video = dir.join("v.mp4");
         run(&["-f", "lavfi", "-i", "color=c=black:s=320x180:r=10:d=4", "-f", "lavfi", "-i", "color=c=gray:s=320x180:r=10:d=6", "-filter_complex", "[0:v][1:v]concat=n=2:v=1", "-g", "10", p(&video)]).unwrap();
         let thumb = dir.join("t.jpg");

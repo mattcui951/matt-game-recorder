@@ -1,5 +1,6 @@
 <script lang="ts">
   import { open as openDialog } from '@tauri-apps/plugin-dialog';
+  import ConfirmDialog from './ConfirmDialog.svelte';
   import CpuAssistToggle from './CpuAssistToggle.svelte';
   import Icon from './Icon.svelte';
   import { api } from '../lib/api';
@@ -17,7 +18,7 @@
   // Delete each Outplayed original once imported: offered only when the drive is too full, and
   // only after the user confirms in the dialog.
   let deleteSources = $state(false);
-  let confirmDialog = $state<HTMLDialogElement>();
+  let confirmDialog = $state<ConfirmDialog>();
   const running = $derived(Object.values(app.jobs).some((j) => j.kind === 'import' && j.state === 'running'));
 
   async function rescan(f?: string) {
@@ -72,7 +73,7 @@
     if (box.checked) {
       // Not on until confirmed.
       box.checked = false;
-      confirmDialog?.showModal();
+      confirmDialog?.open();
     } else {
       deleteSources = false;
     }
@@ -133,15 +134,16 @@
   {#if running}<p class="dim">{t.importPanel.running}</p>{/if}
 </div>
 
-<dialog bind:this={confirmDialog} aria-labelledby="del-q">
-  <h2 id="del-q">{t.importPanel.deleteAsk}</h2>
-  <p>{t.importPanel.deleteAskBody(folder)}</p>
-  <p class="dim">{t.importPanel.deleteAskNote}</p>
-  <div class="btns">
-    <button class="btn ghost sm" onclick={() => confirmDialog?.close()}>{t.common.cancel}</button>
-    <button class="btn danger solid sm" onclick={() => ((deleteSources = true), confirmDialog?.close())}>{t.importPanel.deleteYes}</button>
-  </div>
-</dialog>
+<ConfirmDialog
+  bind:this={confirmDialog}
+  title={t.importPanel.deleteAsk}
+  body={t.importPanel.deleteAskBody(folder)}
+  note={t.importPanel.deleteAskNote}
+  cancel={t.common.cancel}
+  confirm={t.importPanel.deleteYes}
+  danger
+  onconfirm={() => (deleteSources = true)}
+/>
 
 <style>
   .imp {
@@ -237,41 +239,5 @@
   .on-note {
     color: var(--death);
     font-weight: 600;
-  }
-  dialog {
-    width: min(420px, calc(100vw - 32px));
-    padding: 20px 22px 18px;
-    background: var(--panel);
-    color: var(--text);
-    border: 1px solid var(--seam-strong);
-    border-radius: var(--r-lg);
-    box-shadow: var(--shadow-pop);
-    outline: none;
-  }
-  dialog::backdrop {
-    background: var(--backdrop);
-  }
-  h2 {
-    margin: 0 0 10px;
-    font-family: var(--font-score);
-    font-weight: 600;
-    font-size: 16px;
-  }
-  dialog p {
-    margin: 0 0 8px;
-    font-size: 13px;
-    line-height: 1.5;
-    color: var(--text-2);
-    word-break: break-word;
-  }
-  dialog p.dim {
-    font-size: 12.5px;
-    color: var(--text-3);
-  }
-  .btns {
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-    margin-top: 16px;
   }
 </style>

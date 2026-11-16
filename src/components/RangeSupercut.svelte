@@ -6,7 +6,7 @@
   import { MULTIKILL_TIERS, supercutCounts, supercutKey } from '../lib/events';
   import { clock } from '../lib/format.svelte';
   import { t } from '../lib/i18n.svelte';
-  import { app, errorText, go, toast, ui } from '../lib/state.svelte';
+  import { app, errorText, go, offerResult, toast, ui } from '../lib/state.svelte';
   import type { Recording } from '../lib/types';
 
   // A supercut across every match in a date range: pick the dates and the kinds of moment
@@ -98,20 +98,10 @@
       const job = await api.supercutRange(a, b, kinds, before, after);
       toast(t.session.buildingSupercut, 'info');
       onstarted?.();
-      const iv = setInterval(() => {
-        const j = app.jobs[job];
-        if (j && j.state === 'done' && j.resultId) {
-          clearInterval(iv);
-          const id = j.resultId;
-          toast(t.common.ready(j.title), 'ok', {
-            label: t.common.open,
-            run: () => {
-              const r = app.library.recordings.find((x) => x.id === id);
-              if (r) go({ name: 'session', sessionId: r.sessionId, recordingId: r.id });
-            },
-          });
-        } else if (j && j.state !== 'running') clearInterval(iv);
-      }, 400);
+      offerResult(job, (id) => {
+        const r = app.library.recordings.find((x) => x.id === id);
+        if (r) go({ name: 'session', sessionId: r.sessionId, recordingId: r.id });
+      });
     } catch (e) {
       toast(errorText(e), 'error');
     } finally {

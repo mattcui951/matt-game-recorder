@@ -110,7 +110,7 @@ pub const PARTIAL_EXT: &str = "importing.mp4";
 mod leveldb {
     use std::path::Path;
 
-    fn varint(b: &[u8], i: &mut usize) -> Option<u64> {
+    pub(super) fn varint(b: &[u8], i: &mut usize) -> Option<u64> {
         let (mut r, mut s) = (0u64, 0);
         loop {
             let c = *b.get(*i)?;
@@ -256,18 +256,7 @@ mod v8 {
         }
 
         fn varint(&mut self) -> Option<u64> {
-            let (mut r, mut s) = (0u64, 0);
-            loop {
-                let c = self.byte()?;
-                r |= ((c & 0x7f) as u64) << s;
-                if c < 0x80 {
-                    return Some(r);
-                }
-                s += 7;
-                if s > 63 {
-                    return None;
-                }
-            }
+            super::leveldb::varint(self.b, &mut self.i)
         }
 
         fn double(&mut self) -> Option<f64> {
@@ -286,9 +275,15 @@ mod v8 {
             Number::from_f64(v).map(Value::Number).unwrap_or(Value::Null)
         }
 
+        /// Objects get an id in the order they start, for later back-references (`^`).
         fn reserve(&mut self) -> usize {
             self.ids.push(Value::Null);
             self.ids.len() - 1
+        }
+
+        fn keep(&mut self, id: usize, v: Value) -> Value {
+            self.ids[id] = v.clone();
+            v
         }
 
         fn key(&mut self) -> Option<String> {
@@ -329,13 +324,11 @@ mod v8 {
                     b'D' | b'n' => {
                         let id = self.reserve();
                         let v = Self::num(self.double()?);
-                        self.ids[id] = v.clone();
-                        v
+                        self.keep(id, v)
                     }
                     b'y' | b'x' => {
                         let id = self.reserve();
-                        self.ids[id] = Value::Bool(tag == b'y');
-                        Value::Bool(tag == b'y')
+                        self.keep(id, Value::Bool(tag == b'y'))
                     }
                     b'o' => {
                         let id = self.reserve();
@@ -350,8 +343,7 @@ mod v8 {
                             let v = self.value()?;
                             m.insert(k, v);
                         }
-                        self.ids[id] = Value::Object(m.clone());
-                        Value::Object(m)
+                        self.keep(id, Value::Object(m))
                     }
                     b'a' => {
                         let len = self.varint()? as usize;
@@ -370,8 +362,7 @@ mod v8 {
                                 *slot = v;
                             }
                         }
-                        self.ids[id] = Value::Array(arr.clone());
-                        Value::Array(arr)
+                        self.keep(id, Value::Array(arr))
                     }
                     b'A' => {
                         let len = self.varint()? as usize;
@@ -390,8 +381,7 @@ mod v8 {
                             self.key()?;
                             self.value()?;
                         }
-                        self.ids[id] = Value::Array(arr.clone());
-                        Value::Array(arr)
+                        self.keep(id, Value::Array(arr))
                     }
                     b'\'' => {
                         // Set: values until ',' then a count.
@@ -402,8 +392,7 @@ mod v8 {
                         }
                         self.i += 1;
                         self.varint()?;
-                        self.ids[id] = Value::Array(arr.clone());
-                        Value::Array(arr)
+                        self.keep(id, Value::Array(arr))
                     }
                     b';' => {
                         // Map: key/value pairs until ':' then a count.
@@ -416,8 +405,7 @@ mod v8 {
                         }
                         self.i += 1;
                         self.varint()?;
-                        self.ids[id] = Value::Object(m.clone());
-                        Value::Object(m)
+                        self.keep(id, Value::Object(m))
                     }
                     b'^' => {
                         let id = self.varint()? as usize;
@@ -1517,7 +1505,7 @@ fn import_library_inner(core: &Arc<Core>, folder: &Path, ctx: &JobCtx) -> Result
     Ok(None)
 }
 
-/// Summary of what Outplayed's database holds (used by the dev example and logs).
+/// What Outplayed's database holds, for `cargo run --example outplayed_scan`.
 pub fn outplayed_summary() -> String {
     let m = read_outplayed();
     let medias: usize = m.iter().map(|x| x.medias.len()).sum();
@@ -1526,42 +1514,7 @@ pub fn outplayed_summary() -> String {
     for e in m.iter().flat_map(|x| &x.medias).flat_map(|md| &md.events) {
         *kinds.entry(e.kind.clone()).or_default() += 1;
     }
-    let sample = m.iter().find(|x| x.medias.iter().any(|md| md.path.contains("22-41-37-116")));
-    let sample = sample.map(|x| {
-        let md = x.medias.iter().find(|md| md.path.contains("22-41-37-116")).unwrap();
-        format!(
-            "sample: champ={:?} kda={:?} victory={:?} mode={:?} started={:?} kind={} first events={:?}",
-            x.champion,
-            x.kda.as_ref().map(|k| (k.kills, k.deaths, k.assists)),
-            x.victory,
-            x.game_mode,
-            x.started,
-            md.kind,
-            md.events.iter().take(4).map(|e| (e.t, e.kind.clone(), e.before, e.after)).collect::<Vec<_>>()
-        )
-    });
-    format!("matches {} medias {} events {} kinds {:?}\n{}", m.len(), medias, events, kinds, sample.unwrap_or_default())
-}
-
-/// Raw match records from an Outplayed database folder (or a copy of one) whose champion
-/// matches `champion`, with the per-video data left out. For investigating Outplayed's format.
-#[doc(hidden)]
-pub fn debug_match_info(dir: &Path, champion: &str) -> String {
-    let mut out = String::new();
-    for (_, v) in leveldb::dump(dir) {
-        if !v.windows(7).any(|w| w == b"medias") {
-            continue;
-        }
-        let Some(Value::Object(mut m)) = v8::decode(&v) else { continue };
-        let champ = m.get("info").and_then(|i| i.get("selectedChampion")).and_then(Value::as_str).unwrap_or("");
-        if !champ.eq_ignore_ascii_case(champion) {
-            continue;
-        }
-        let medias = m.remove("medias").and_then(|x| x.as_array().map(|a| a.len())).unwrap_or(0);
-        out.push_str(&format!("medias={medias} {}
-", Value::Object(m)));
-    }
-    out
+    format!("matches {} medias {} events {} kinds {:?}", m.len(), medias, events, kinds)
 }
 
 #[doc(hidden)]
@@ -1584,6 +1537,33 @@ pub fn debug_counts() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every value kind Outplayed's records use, back-references included.
+    #[test]
+    fn v8_values_decode() {
+        let mut b = vec![0xff, 0x0f, b'o'];
+        let key = |b: &mut Vec<u8>, k: u8| b.extend([b'"', 1, k]);
+        key(&mut b, b'a');
+        b.extend([b'I', 10]); // 5, zigzag
+        key(&mut b, b'b');
+        b.push(b'N');
+        b.extend(1.5f64.to_le_bytes());
+        key(&mut b, b'c');
+        b.push(b'T');
+        key(&mut b, b'd');
+        b.extend([b'A', 2, b'I', 2, b'I', 4, b'$', 0, 2]); // dense [1, 2]
+        key(&mut b, b'e');
+        b.extend([b'a', 3, b'I', 2, b'"', 1, b'x', b'@', 1, 3]); // sparse [, "x", ]
+        key(&mut b, b'f');
+        b.extend([b';', b'"', 1, b'k', b'T', b':', 2]); // Map {k: true}
+        key(&mut b, b'g');
+        b.extend([b'\'', b'I', 6, b',', 1]); // Set {3}
+        key(&mut b, b'h');
+        b.extend([b'^', 1]); // the dense array again
+        b.extend([b'{', 8]);
+        let v = v8::decode(&b).unwrap();
+        assert_eq!(v, serde_json::json!({"a": 5, "b": 1.5, "c": true, "d": [1, 2], "e": [null, "x", null], "f": {"k": true}, "g": [3], "h": [1, 2]}));
+    }
 
     fn media(kind: &str, events: &[&str]) -> OpMedia {
         let events = events.iter().map(|k| RecEvent { t: 1.0, kind: k.to_string(), ..Default::default() }).collect();

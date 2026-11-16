@@ -139,17 +139,38 @@ pub fn rename_session(core: Core_, id: String, title: String) -> Res<()> {
     Ok(())
 }
 
-#[tauri::command]
-pub fn delete_recordings(core: Core_, ids: Vec<String>) -> Res<()> {
+/// Move recordings to Recently deleted, none of them if any is used by an editor project.
+fn soft_delete(core: &Core, ids: &[String]) -> Res<()> {
     let protected = editor::protected_ids(&core.library.root());
-    for id in &ids {
+    for id in ids {
         core.library.ensure_not_protected(id, &protected).map_err(e)?;
     }
     for id in ids {
-        core.library.soft_delete(&id).map_err(e)?;
+        core.library.soft_delete(id).map_err(e)?;
     }
     core.library_changed();
     Ok(())
+}
+
+fn purge(core: &Core, ids: Vec<String>) -> Res<()> {
+    for id in ids {
+        core.library.purge(&id).map_err(e)?;
+    }
+    core.library_changed();
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_recordings(core: Core_, ids: Vec<String>) -> Res<()> {
+    soft_delete(&core, &ids)
+}
+
+/// Move whole sessions (every recording in them) to Recently deleted.
+#[tauri::command]
+pub fn delete_sessions(core: Core_, ids: Vec<String>) -> Res<usize> {
+    let recs: Vec<String> = ids.iter().flat_map(|id| core.library.recordings_of(id)).map(|r| r.id).collect();
+    soft_delete(&core, &recs)?;
+    Ok(recs.len())
 }
 
 #[tauri::command]
@@ -163,11 +184,13 @@ pub fn restore_recordings(core: Core_, ids: Vec<String>) -> Res<()> {
 
 #[tauri::command]
 pub fn purge_recordings(core: Core_, ids: Vec<String>) -> Res<()> {
-    for id in ids {
-        core.library.purge(&id).map_err(e)?;
-    }
-    core.library_changed();
-    Ok(())
+    purge(&core, ids)
+}
+
+#[tauri::command]
+pub fn empty_recently_deleted(core: Core_) -> Res<()> {
+    let ids = core.library.snapshot().recordings.into_iter().filter(|r| r.deleted_at.is_some()).map(|r| r.id).collect();
+    purge(&core, ids)
 }
 
 #[tauri::command]
@@ -278,10 +301,7 @@ pub fn supercut_range(core: Core_, from: String, to: String, kinds: Vec<String>,
     if parts.is_empty() {
         return Err(tr!("No moments of the selected kinds in these dates.", "这段日期里没有所选类型的时刻。"));
     }
-    let session = match core.library.snapshot().sessions.into_iter().find(|s| s.game == "Video editor" && s.title == "Supercuts") {
-        Some(s) => s,
-        None => core.library.create_session("Video editor", "Supercuts", "export").map_err(e)?,
-    };
+    let session = core.library.editor_session("Supercuts").map_err(e)?;
     let (a, b) = (from.format("%Y-%m-%d").to_string(), to.format("%Y-%m-%d").to_string());
     let title = if from == to { tr!("Supercut {a}", "集锦 {a}") } else { tr!("Supercut {a} to {b}", "集锦 {a} 至 {b}") };
     Ok(render_supercut(core, parts, session, title, None))
@@ -432,10 +452,7 @@ pub fn export_project(core: Core_, id: String, codec: String) -> Res<String> {
     let app = core.app.clone();
     let title = project.name.clone();
     let job = core.clone().jobs.spawn(&app, "export", &crate::i18n::title(&title), move |ctx| {
-        let session = match core.library.snapshot().sessions.into_iter().find(|s| s.game == "Video editor" && s.title == "Exports") {
-            Some(s) => s,
-            None => core.library.create_session("Video editor", "Exports", "export")?,
-        };
+        let session = core.library.editor_session("Exports")?;
         let out = crate::paths::unique_file(&session.dir, &title, "mp4");
         let settings = core.settings();
         let spec = ffmpeg::RenderSpec {
@@ -529,16 +546,6 @@ pub fn create_backup(core: Core_, dest: String) -> Res<String> {
         copy_tree(&root, &target, total, &mut done, ctx, false)?;
         Ok(None)
     }))
-}
-
-#[tauri::command]
-pub fn empty_recently_deleted(core: Core_) -> Res<()> {
-    let ids: Vec<String> = core.library.snapshot().recordings.into_iter().filter(|r| r.deleted_at.is_some()).map(|r| r.id).collect();
-    for id in ids {
-        core.library.purge(&id).map_err(e)?;
-    }
-    core.library_changed();
-    Ok(())
 }
 
 /// Look for a newer version now (Settings button).
@@ -678,19 +685,4 @@ pub fn pause_job(core: Core_, id: String, paused: bool) -> Res<()> {
         }
         None => Err(tr!("This job cannot be paused.", "此任务无法暂停。")),
     }
-}
-
-/// Move whole sessions (every recording in them) to Recently deleted.
-#[tauri::command]
-pub fn delete_sessions(core: Core_, ids: Vec<String>) -> Res<usize> {
-    let protected = editor::protected_ids(&core.library.root());
-    let recs: Vec<Recording> = ids.iter().flat_map(|id| core.library.recordings_of(id)).collect();
-    for r in &recs {
-        core.library.ensure_not_protected(&r.id, &protected).map_err(e)?;
-    }
-    for r in &recs {
-        core.library.soft_delete(&r.id).map_err(e)?;
-    }
-    core.library_changed();
-    Ok(recs.len())
 }

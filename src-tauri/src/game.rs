@@ -561,13 +561,7 @@ fn finish_match(core: &Arc<Core>, mut m: MatchSession) {
         s.message = Some(tr!("Saving {shown}...", "正在保存 {shown}..."));
     });
     if let Some((start, pin)) = m.bookmark.take() {
-        let now = m.rec.now();
-        let tm = m.gs.hotkeys.bookmark_toggle_before;
-        let ev = RecEvent { t: start, kind: "bookmark".into(), label: "Manual capture".into(), multi: None, before: tm, after: (now - start).max(1.0), ..Default::default() };
-        m.events.push(ev.clone());
-        if m.mode != "match" && m.mode != "session" {
-            m.pending.push(Pending { event: ev, pin: Some(pin) });
-        }
+        end_manual_capture(&mut m, start, pin);
     }
     process_pending(core, &mut m, true);
     m.input = None;
@@ -659,16 +653,7 @@ fn handle_hotkey(core: &Arc<Core>, h: Hotkey, active: &mut Option<MatchSession>,
                     core.notify(&tr!("Manual capture started", "手动捕捉已开始"), &tr!("Press the hotkey again to stop.", "再按一次快捷键停止。"));
                 }
             }
-            Some((start, pin)) => {
-                let now = m.rec.now();
-                let ev = RecEvent { t: start, kind: "bookmark".into(), label: "Manual capture".into(), multi: None, before: m.gs.hotkeys.bookmark_toggle_before, after: (now - start).max(1.0), ..Default::default() };
-                m.events.push(ev.clone());
-                if m.mode == "match" || m.mode == "session" {
-                    m.rec.unpin(pin);
-                } else {
-                    m.pending.push(Pending { event: ev, pin: Some(pin) });
-                }
-            }
+            Some((start, pin)) => end_manual_capture(m, start, pin),
         },
         Hotkey::Screenshot => {
             let file = crate::paths::unique_file(&m.session.dir, "Screenshot", "png");
@@ -689,6 +674,19 @@ fn handle_hotkey(core: &Arc<Core>, h: Hotkey, active: &mut Option<MatchSession>,
             let _ = core.app.emit("dashboard-layout", ());
         }
         _ => {}
+    }
+}
+
+/// A manual capture (started by the hotkey at `start`) ends now: it is marked on the timeline, and
+/// outside full recordings its clip is queued, holding the buffer from `pin` until it is cut.
+fn end_manual_capture(m: &mut MatchSession, start: f64, pin: u64) {
+    let after = (m.rec.now() - start).max(1.0);
+    let ev = RecEvent { t: start, kind: "bookmark".into(), label: "Manual capture".into(), before: m.gs.hotkeys.bookmark_toggle_before, after, ..Default::default() };
+    m.events.push(ev.clone());
+    if m.mode == "match" || m.mode == "session" {
+        m.rec.unpin(pin);
+    } else {
+        m.pending.push(Pending { event: ev, pin: Some(pin) });
     }
 }
 

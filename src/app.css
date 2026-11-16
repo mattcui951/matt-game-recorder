@@ -242,6 +242,50 @@ p {
   color: var(--text-3);
 }
 
+/* Settings pages: Settings and the Appearance page shown inside it. */
+.settings-page h1 {
+  font-size: 24px;
+}
+.settings-page .lead {
+  color: var(--text-3);
+  margin: 4px 0 20px;
+}
+.settings-page h2 {
+  font-size: 17px;
+}
+.settings-page .sub-lead {
+  color: var(--text-3);
+  font-size: 12.5px;
+  margin: 2px 0 10px;
+}
+.settings-page .sec {
+  padding: 22px 0 18px;
+  border-top: 1px solid var(--seam);
+}
+.settings-page .sec:first-of-type {
+  border-top: 0;
+  padding-top: 4px;
+}
+.settings-page .row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  min-height: 44px;
+  padding: 4px 0;
+}
+.settings-page .row > span:first-child {
+  display: grid;
+  gap: 2px;
+}
+.settings-page .row small {
+  color: var(--text-3);
+  font-size: 12px;
+}
+.settings-page .row.sub {
+  padding-left: 16px;
+}
+
 .empty {
   display: grid;
   place-items: center;
