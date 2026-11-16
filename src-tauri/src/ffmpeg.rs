@@ -152,6 +152,11 @@ pub fn audio_encoder_args() -> Vec<String> {
 }
 
 fn run(args: &[&str]) -> Result<()> {
+    run_out(args).map(drop)
+}
+
+/// `run`, returning what ffmpeg wrote to stdout.
+fn run_out(args: &[&str]) -> Result<String> {
     let out = hidden_command(paths::ffmpeg())
         .args(["-hide_banner", "-loglevel", "error", "-y"])
         .args(args)
@@ -163,7 +168,7 @@ fn run(args: &[&str]) -> Result<()> {
         let err = err.trim();
         bail!(tr!("ffmpeg failed: {err}", "ffmpeg 出错：{err}"));
     }
-    Ok(())
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
 fn p(path: &Path) -> &str {
@@ -181,9 +186,29 @@ pub fn cut_copy(input: &Path, start: f64, end: f64, output: &Path) -> Result<()>
     run(&["-ss", &ss, "-i", p(input), "-t", &t, "-map", "0", "-c", "copy", "-avoid_negative_ts", "make_zero", "-movflags", "+faststart", p(output)])
 }
 
-pub fn thumbnail(input: &Path, at: f64, output: &Path) -> Result<()> {
+/// The frame at `at` seconds as a 480px JPEG, and its mean brightness (video range: 16 is black).
+fn still(input: &Path, at: f64, output: &Path) -> Result<f64> {
     let ss = format!("{:.2}", at.max(0.0));
-    run(&["-ss", &ss, "-i", p(input), "-frames:v", "1", "-vf", "scale=480:-2", "-q:v", "5", p(output)])
+    let vf = r"format=yuv420p,signalstats,metadata=print:key=lavfi.signalstats.YAVG:file='pipe\:1',scale=480:-2";
+    let out = run_out(&["-ss", &ss, "-i", p(input), "-frames:v", "1", "-vf", vf, "-q:v", "5", p(output)])?;
+    Ok(out.lines().find_map(|l| l.split("YAVG=").nth(1)).and_then(|v| v.trim().parse().ok()).unwrap_or(255.0))
+}
+
+/// A thumbnail from near `at` seconds. A black frame (the game minimized, a loading screen) makes
+/// a useless thumbnail, so points before and after it are tried until one shows something; when
+/// all of them are dark, the frame at `at` is kept.
+pub fn thumbnail(input: &Path, at: f64, duration: f64, output: &Path) -> Result<()> {
+    const DARK: f64 = 20.0;
+    if still(input, at, output)? > DARK || duration <= 0.0 {
+        return Ok(());
+    }
+    let step = duration * 0.07;
+    for t in [1.0, -1.0, 2.0, -2.0, 3.0, -3.0].map(|k| at + k * step) {
+        if (0.0..duration).contains(&t) && still(input, t, output)? > DARK {
+            return Ok(());
+        }
+    }
+    still(input, at, output).map(drop)
 }
 
 /// A horizontal strip of `count` keyframe thumbnails, 160px wide each.
@@ -678,5 +703,26 @@ pub fn convert(
             run_once(false)
         }
         other => other,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A 10 s video, black for its first 4 s: the thumbnail asked for at 3 s comes from the lit part.
+    #[test]
+    fn thumbnail_skips_black_frames() {
+        let dir = std::env::temp_dir().join(format!("mgr-thumb-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let video = dir.join("v.mp4");
+        run(&["-f", "lavfi", "-i", "color=c=black:s=320x180:r=10:d=4", "-f", "lavfi", "-i", "color=c=gray:s=320x180:r=10:d=6", "-filter_complex", "[0:v][1:v]concat=n=2:v=1", "-g", "10", p(&video)]).unwrap();
+        let thumb = dir.join("t.jpg");
+        thumbnail(&video, 3.0, 10.0, &thumb).unwrap();
+        let brightness = still(&thumb, 0.0, &dir.join("check.jpg")).unwrap();
+        let dark_only = still(&video, 3.0, &dir.join("dark.jpg")).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(dark_only < 20.0, "the frame at 3 s is black: {dark_only}");
+        assert!(brightness > 20.0, "picked a dark frame: {brightness}");
     }
 }

@@ -407,6 +407,7 @@ export const zhCN: Messages = {
     monthAria: (month, n) => `${month}：${n} 场对局`,
     daysIn: (month) => `${month}的日期`,
     dayAria: (date, n) => `${date}：${n} 场对局`,
+    dayMatches: (n) => `${n} 局`,
     periodAllYears: (when) => `${when}（所有年份）`,
     count: (shown, total) => (shown === total ? `${total} 场对局` : `${shown} / ${total} 场对局`),
     inPeriod: (period) => `· ${period}`,

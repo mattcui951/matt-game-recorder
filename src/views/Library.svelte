@@ -139,6 +139,10 @@
   });
   // A weekday only means something when the year is known.
   const dayYear = $derived(ui.libraryYear ?? (years.length === 1 ? years[0] : null));
+  /** "Nov 2" / "11月2日": the day with its month, so the chip reads as a date. */
+  function dayDate(day: number): string {
+    return new Date(dayYear ?? 2000, ui.libraryMonth ?? 0, day).toLocaleDateString(intlLocale(), { month: 'short', day: 'numeric' });
+  }
   function weekday(day: number): string {
     return dayYear === null || ui.libraryMonth === null ? '' : new Date(dayYear, ui.libraryMonth, day).toLocaleDateString(intlLocale(), { weekday: 'short' });
   }
@@ -414,9 +418,9 @@
                     aria-label={t.library.dayAria(periodDate(null, ui.libraryMonth ?? 0, d), n)}
                     onclick={() => (ui.libraryDay = ui.libraryDay === d ? null : d)}
                   >
-                    <span class="num dn">{d}</span>
+                    <span class="dn">{dayDate(d)}</span>
                     {#if weekday(d)}<span class="wd">{weekday(d)}</span>{/if}
-                    <span class="num n">{n || '-'}</span>
+                    {#if n}<span class="num n">{t.library.dayMatches(n)}</span>{/if}
                   </button>
                 {/each}
               </div>
@@ -426,7 +430,7 @@
       {/if}
       <div class="summary">
         <span>
-          <span class="num">{t.library.count(shown.length, totalSessions)}</span>{#if periodLabel}{' '}{t.library.inPeriod(periodLabel, ui.libraryDay !== null)} <button class="link" onclick={clearPeriod}>{t.library.showAllDates}</button>{/if} · <span class="num">{bytes(shownBytes)}</span>
+          <span class="num">{t.library.count(shown.length, totalSessions)}</span>{#if periodLabel}{' '}{t.library.inPeriod(periodLabel, ui.libraryDay !== null)} · <button class="link" onclick={clearPeriod}>{t.library.showAllDates}</button>{/if} · <span class="num">{bytes(shownBytes)}</span>
           {#if app.disk} · <span class="num">{t.library.freeOnDrive(bytes(app.disk.free))}</span>{/if}
         </span>
         <button class="link" onclick={() => go({ name: 'settings', page: 'storage' })}>{retention} · {t.library.storageLink}</button>
@@ -740,25 +744,32 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    height: 28px;
-    padding: 0 10px;
+    height: 30px;
+    padding: 0 5px 0 10px;
     border-radius: var(--r-sm);
     background: var(--panel-2);
     color: var(--text-2);
   }
   .dy .dn {
-    font-family: var(--font-score);
     font-weight: 600;
-    font-size: 14px;
+    font-size: 13px;
     color: var(--text);
   }
   .dy .wd {
     font-size: 11.5px;
     color: var(--text-3);
   }
+  /* The count as its own tag, with its unit, so it can't be read as part of the date. */
   .dy .n {
-    font-size: 12px;
+    margin-left: 2px;
+    height: 20px;
+    padding: 0 7px;
+    display: inline-flex;
+    align-items: center;
+    border-radius: 10px;
+    font-size: 11.5px;
     color: var(--you);
+    background: color-mix(in oklab, var(--you) 14%, transparent);
   }
   .dy:hover:not(:disabled) {
     background: var(--panel-3);

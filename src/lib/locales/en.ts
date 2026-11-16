@@ -377,6 +377,8 @@ export const en = {
     monthAria: (month: string, n: number) => `${month}: ${s(n, 'match', 'matches')}`,
     daysIn: (month: string) => `Days in ${month}`,
     dayAria: (date: string, n: number) => `${date}: ${s(n, 'match', 'matches')}`,
+    /** The match count on a day in the date bar. */
+    dayMatches: (n: number) => s(n, 'match', 'matches'),
     periodAllYears: (when: string) => `${when}, all years`,
     count: (shown: number, total: number) => (shown === total ? s(total, 'match', 'matches') : `${shown} of ${s(total, 'match', 'matches')}`),
     inPeriod: (period: string, day: boolean) => `${day ? 'on' : 'in'} ${period}`,

@@ -5,8 +5,9 @@ import { championsZh } from './format.svelte';
 import { applyLanguage, i18n, resolveLanguage, t, type LanguageSetting } from './i18n.svelte';
 import type { Appearance, CpuAssist, DiskInfo, Job, Recording, Session, Settings, Snapshot, Status, UpdateState } from './types';
 
+export type LibraryRoute = { name: 'library'; tab: 'sessions' | 'favorites' | 'deleted' };
 export type Route =
-  | { name: 'library'; tab: 'sessions' | 'favorites' | 'deleted' }
+  | LibraryRoute
   | { name: 'session'; sessionId: string; recordingId?: string; at?: number }
   | { name: 'editor'; projectId?: string }
   | { name: 'settings'; page: string };
@@ -23,7 +24,8 @@ export const app = $state({
   status: idleStatus as Status,
   library: { sessions: [], recordings: [] } as Snapshot,
   route: { name: 'library', tab: 'sessions' } as Route,
-  history: [] as Route[],
+  /** The library as it was last left (which tab), for the way back to it. */
+  lastLibrary: { name: 'library', tab: 'sessions' } as LibraryRoute,
   jobs: {} as Record<string, Job>,
   disk: null as DiskInfo | null,
   toasts: [] as Toast[],
@@ -105,13 +107,14 @@ export function errorText(e: unknown): string {
 }
 
 export function go(route: Route) {
-  app.history.push(app.route);
-  if (app.history.length > 30) app.history.shift();
+  if (app.route.name === 'library') app.lastLibrary = app.route;
   app.route = route;
 }
 
-export function back() {
-  app.route = app.history.pop() ?? { name: 'library', tab: 'sessions' };
+/** Back to the list of matches, as it was left. Not to the previous page: after a few games in a
+ *  row each match has opened itself on top of the last, and back would step through all of them. */
+export function backToLibrary() {
+  app.route = app.lastLibrary;
 }
 
 export function mediaSrc(r: { relDir: string }, file?: string | null): string {

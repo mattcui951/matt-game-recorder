@@ -6,7 +6,7 @@
   import Slider from '../components/Slider.svelte';
   import Timeline from '../components/Timeline.svelte';
   import { api } from '../lib/api';
-  import { app, artSrc, back, cacheSrc, errorText, go, mediaSrc, recordingsOf, sessionById, setUiPref, toast, ui } from '../lib/state.svelte';
+  import { app, artSrc, backToLibrary, cacheSrc, errorText, go, mediaSrc, recordingsOf, sessionById, setUiPref, toast, ui } from '../lib/state.svelte';
   import { championName, clock, displayTitle, modeName, parseClock } from '../lib/format.svelte';
   import { eventLabel, FILTER_KINDS, filterKey, meta, MULTIKILL_TIERS, supercutCounts } from '../lib/events';
   import SupercutKinds from '../components/SupercutKinds.svelte';
@@ -175,7 +175,7 @@
       await api.deleteRecordings([id]);
       selectedId = undefined;
       toast(t.common.movedToDeleted(displayTitle(title)), 'info', { label: t.common.undo, run: () => api.restoreRecordings([id]) });
-      if (recs.length <= 1) back();
+      if (recs.length <= 1) backToLibrary();
     } catch (e) {
       toast(errorText(e), 'error');
     }
@@ -222,7 +222,7 @@
 {:else}
   <section class="sv">
     <header class="head">
-      <button class="icon-btn" onclick={back} aria-label={t.common.back}><Icon name="chevron-left" size={18} /></button>
+      <button class="icon-btn" onclick={backToLibrary} aria-label={t.common.back}><Icon name="chevron-left" size={18} /></button>
       {#if champIcon}<img class="champ" src={champIcon} alt="" />{/if}
       <div class="titles">
         {#if renaming}

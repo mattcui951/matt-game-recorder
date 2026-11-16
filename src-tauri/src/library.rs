@@ -548,7 +548,7 @@ impl Library {
         let dir = file.parent().context("no parent")?.to_path_buf();
         let thumb = thumb_name(&name);
         let at = if kind == "match" || kind == "session" { probe.duration * 0.3 } else { probe.duration * 0.5 };
-        let has_thumb = crate::ffmpeg::thumbnail(file, at, &dir.join(&thumb)).is_ok();
+        let has_thumb = crate::ffmpeg::thumbnail(file, at, probe.duration, &dir.join(&thumb)).is_ok();
         let mut r = Recording {
             id: uuid::Uuid::new_v4().simple().to_string(),
             session_id: session.id.clone(),
