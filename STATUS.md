@@ -15,6 +15,10 @@ Version: 1.0.0, released 2026-11-19
 
 ## Next
 
+- One 543 KB JS chunk (all eight locales); Vite warns over 500 KB. Harmless for a local app;
+  lazy-loading locales would clear it.
+- Test-pass ideas not done: a clicked moment seeks but stays paused; the Update page says
+  "from GitHub releases" twice; Settings hotkey fields are narrower than the selects below them.
 - No open requests. Ideas raised along the way: Highlights mode saves disk but not CPU or GPU,
   because the game is still encoded into a memory buffer to have the seconds before each event.
 
@@ -32,6 +36,18 @@ Version: 1.0.0, released 2026-11-19
 
 ## Recently done
 
+- Full UI test pass (Playwright on the browser preview, 1100-1600 px, zh/ru/es, light theme), fixes:
+  library toolbar fits the 1100 px minimum window in every language (tabs never wrap; Supercut,
+  Import and the view switch drop to icons, then Select); timeline group chips no longer overlap
+  (the collision test now uses a group's drawn width), multikill chips fit long names
+  ("Четверное"); moments list no longer breaks on two events in the same second (40 of 359
+  recordings had them); "Delete forever" and "Delete all forever" ask first; Recently deleted rows
+  show the match date; "2 selected · 1.1 GB" spacing; a Svelte dev warning in `setUiPref`; the
+  browser preview shows the real version and library size. Not seen in the real WebView2 window.
+
+- Registered this folder as the standalone Matt Game Recorder project in T3 Code.
+  Added shared agent context and a project-local Claude preview configuration.
+  Existing Claude app memories remain in their dedicated project directory.
 - (1.0.0) Russian (Русский) as the eighth UI language, in the frontend catalog and every backend `tr!`;
   Russian plurals in the UI, "label: N" wording for counts in backend messages. Checked library,
   match and every Settings page in the dev app; translations not read by a native speaker.

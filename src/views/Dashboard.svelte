@@ -49,7 +49,7 @@
       {#if st.mode === 'highlights'}<span class="num dim">{t.dashboard.clipsSaved(st.clipsSaved)}</span>{/if}
     </div>
     <ol class="feed">
-      {#each feed as e (e.t + e.kind)}
+      {#each feed as e, i (i)}
         {@const m = meta(e.kind)}
         <li style="--c:{m.color}"><Icon name={m.icon} size={15} /><span class="lbl">{eventLabel(e)}</span><span class="num t">{clock(e.t)}</span></li>
       {:else}

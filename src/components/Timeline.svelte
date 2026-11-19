@@ -50,17 +50,33 @@
   const GAP = 4;
   /** A multikill shows its name ("Double"), so it needs more room than an icon. */
   const STREAK = 74;
+  /** Each streak name's chip width in this language ("Четверное" needs more than "Double"). */
+  const streakW = $derived.by(() => {
+    const ctx = document.createElement('canvas').getContext('2d');
+    if (ctx) ctx.font = `700 11.5px ${getComputedStyle(document.body).fontFamily}`;
+    // Icon 14 + gap 4 + padding 4 and 7, plus a little slack for rounding.
+    return t.timeline.streak.map((name) => Math.max(STREAK, Math.ceil(31 + (ctx ? ctx.measureText(name).width : name.length * 7.5))));
+  });
   const ROW_H = 28;
   type Mark = { lane: number; px: number; end: number; items: RecEvent[] };
+  /** A mark's drawn width. A group is as wide as its moments, but never narrower than its
+   *  icons plus count, so the collision test below and the drawing agree. */
+  function markWidth(m: Mark): number {
+    const span = m.end - m.px + CHIP;
+    if (m.items.length === 1) return span;
+    return Math.max(span, 8 + kindsOf(m).length * 13 + 2 + String(m.items.length).length * 7);
+  }
   const marks = $derived.by(() => {
     const out: Mark[] = [];
     const last: (Mark | undefined)[] = [];
     for (const e of [...events].sort((p, q) => p.t - q.t)) {
       const lane = laneOf(e.kind);
       const px = x(e.t);
-      const end = e.kind === 'multikill' ? Math.max(px + w(e.span ?? 0), px + STREAK - CHIP) : px;
+      const end = e.kind === 'multikill' ? Math.max(px + w(e.span ?? 0), px + (streakW[e.multi ?? 2] ?? STREAK) - CHIP) : px;
       const cur = last[lane];
-      if (cur && px - CHIP / 2 < cur.end + CHIP / 2 + GAP) {
+      // A group is drawn wider than its moments (icons plus count), so test against the
+      // width the mark would be drawn at if this moment joined it, not just its last moment.
+      if (cur && px - CHIP / 2 < cur.px - CHIP / 2 + markWidth({ ...cur, items: [...cur.items, e] }) + GAP) {
         cur.items.push(e);
         cur.end = Math.max(cur.end, end);
       } else {
@@ -77,9 +93,7 @@
   const lead = (m: Mark) => m.items.reduce((a, b) => (rank(b) > rank(a) ? b : a));
   /** Where a mark's left edge goes: at its moment, but never past the end of the timeline. */
   function markLeft(m: Mark): number {
-    const single = m.items.length === 1;
-    const width = single ? m.end - m.px + CHIP : m.end - m.px + CHIP + kindsOf(m).length * 13 + 16;
-    return Math.min(m.px, innerW - width + CHIP / 2 - 2);
+    return Math.min(m.px, innerW - markWidth(m) + CHIP / 2 - 2);
   }
   /** Distinct kinds in a group, most important first (up to three icons). */
   const kindsOf = (m: Mark) => [...new Set([...m.items].sort((a, b) => rank(b) - rank(a)).map((e) => e.kind))].slice(0, 3);
@@ -254,7 +268,7 @@
             class="mark"
             class:group={!single}
             class:streak={single && top.kind === 'multikill'}
-            style="left:{markLeft(mk)}px;top:{rowOf(mk.lane) * ROW_H + 6}px;--w:{Math.max(0, mk.end - mk.px)}px;--c:{m.color}"
+            style="left:{markLeft(mk)}px;top:{rowOf(mk.lane) * ROW_H + 6}px;--w:{Math.max(0, mk.end - mk.px)}px;--mw:{markWidth(mk)}px;--c:{m.color}"
             onpointerdown={(e) => e.stopPropagation()}
             onclick={(e) => markClick(e, mk)}
             onpointerenter={() => hoverMark(mk)}
@@ -388,8 +402,7 @@
   }
   /* Several moments in one mark: drawn as a small stack so it never reads as a multikill. */
   .mark.group {
-    width: auto;
-    min-width: calc(var(--w) + 22px);
+    width: var(--mw);
     justify-content: flex-start;
     box-shadow:
       inset 0 0 0 1px var(--seam-strong),

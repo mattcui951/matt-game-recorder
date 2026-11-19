@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import Icon from '../components/Icon.svelte';
   import ImportPanel from '../components/ImportPanel.svelte';
   import RangeSupercut from '../components/RangeSupercut.svelte';
@@ -234,6 +235,19 @@
     }
   }
 
+  // Purging removes files from the disk, so it asks first (moving to Recently deleted does not).
+  let purgeDialog = $state<ConfirmDialog>();
+  let purgeAsk = $state<{ rec: Recording | null }>({ rec: null });
+  function askPurge(rec: Recording | null) {
+    purgeAsk = { rec };
+    purgeDialog?.open();
+  }
+  function purgeConfirmed() {
+    const rec = purgeAsk.rec;
+    if (rec) run(api.purgeRecordings([rec.id]));
+    else run(api.emptyRecentlyDeleted(), t.library.emptied);
+  }
+
   async function deleteSessions(ids: string[]) {
     const recIds = ids.flatMap((id) => (bySession.get(id) ?? []).map((r) => r.id));
     const one = app.library.sessions.find((s) => s.id === ids[0])?.title;
@@ -275,7 +289,7 @@
       <div class="find">
         <Popover bind:open={supercutOpen} width={360}>
           {#snippet anchor(toggleOpen)}
-            <button class="btn ghost sm" onclick={toggleOpen}><Icon name="bolt" size={15} />{t.supercut.button}</button>
+            <button class="btn ghost sm squeeze" onclick={toggleOpen} aria-label={t.supercut.button} title={t.supercut.button}><Icon name="bolt" size={15} /><span class="b-lbl">{t.supercut.button}</span></button>
           {/snippet}
           {#snippet children(close)}
             <RangeSupercut onstarted={close} />
@@ -283,7 +297,7 @@
         </Popover>
         <Popover bind:open={importOpen} width={340}>
           {#snippet anchor(toggleOpen)}
-            <button class="btn ghost sm" onclick={toggleOpen}><Icon name="restore" size={15} />{t.library.import}</button>
+            <button class="btn ghost sm squeeze" onclick={toggleOpen} aria-label={t.library.import} title={t.library.import}><Icon name="restore" size={15} /><span class="b-lbl">{t.library.import}</span></button>
           {/snippet}
           {#snippet children(close)}
             <ImportPanel onstarted={close} />
@@ -359,14 +373,14 @@
           value={ui.libraryView}
           onchange={(v) => (ui.libraryView = v)}
           options={[
-            { value: 'table', label: t.library.list, hint: t.library.listHint },
-            { value: 'grid', label: t.library.grid, hint: t.library.gridHint },
+            { value: 'table', label: t.library.list, hint: t.library.listHint, icon: 'rows' },
+            { value: 'grid', label: t.library.grid, hint: t.library.gridHint, icon: 'grid' },
           ]}
         />
-        <button class="btn sm" class:sel-on={selecting} onclick={() => ((selecting = !selecting), (selected = []))}><Icon name="check" size={14} />{selecting ? t.common.done : t.library.select}</button>
+        <button class="btn sm squeeze last" class:sel-on={selecting} onclick={() => ((selecting = !selecting), (selected = []))} aria-label={selecting ? t.common.done : t.library.select} title={selecting ? t.common.done : t.library.select}><Icon name="check" size={14} /><span class="b-lbl">{selecting ? t.common.done : t.library.select}</span></button>
       </div>
     {:else if tab === 'deleted' && deleted.length}
-      <button class="btn danger sm" onclick={() => run(api.emptyRecentlyDeleted(), t.library.emptied)}>{t.library.deleteAllForever}</button>
+      <button class="btn danger sm" onclick={() => askPurge(null)}>{t.library.deleteAllForever}</button>
     {/if}
   </header>
 
@@ -437,7 +451,7 @@
       </div>
       {#if selecting}
         <div class="selbar">
-          <span><span class="num">{t.library.selected(selected.length)}</span>{#if selected.length} · <span class="num">{bytes(selectedBytes)}</span>{/if}</span>
+          <span><span class="num">{t.library.selected(selected.length)}</span>{#if selected.length}{' · '}<span class="num">{bytes(selectedBytes)}</span>{/if}</span>
           <button class="btn ghost sm" onclick={() => (selected = selected.length === shown.length ? [] : shown.map((s) => s.id))}>
             {selected.length === shown.length && shown.length ? t.library.selectNone : t.library.selectAll(shown.length)}
           </button>
@@ -577,10 +591,10 @@
           {#each deleted as r (r.id)}
             <div class="void">
               <span class="v-thumb">{#if r.thumb}<img src={mediaSrc(r, r.thumb)} alt="" loading="lazy" />{/if}<span class="stamp">{t.library.voidStamp}</span></span>
-              <span class="v-title"><span class="t">{displayTitle(r.title)}</span><span class="s">{gameName(r.originalDir?.split('/')[0])} · {bytes(r.size)} · {clock(r.duration)}</span></span>
+              <span class="v-title"><span class="t">{displayTitle(r.title)}</span><span class="s">{gameName(r.originalDir?.split('/')[0])} · {dayLabel(r.createdAt)} {timeOfDay(r.createdAt)} · {clock(r.duration)} · {bytes(r.size)}</span></span>
               <span class="v-left num">{t.library.daysLeft(daysLeft(r))}</span>
               <button class="btn sm" onclick={() => run(api.restoreRecordings([r.id]), t.library.restored(displayTitle(r.title)))}><Icon name="restore" size={15} />{t.library.restore}</button>
-              <button class="btn danger sm" onclick={() => run(api.purgeRecordings([r.id]))}>{t.library.deleteForever}</button>
+              <button class="btn danger sm" onclick={() => askPurge(r)}>{t.library.deleteForever}</button>
             </div>
           {/each}
         </div>
@@ -595,12 +609,23 @@
   </div>
 </section>
 
+<ConfirmDialog
+  bind:this={purgeDialog}
+  title={purgeAsk.rec ? t.library.purgeAsk(displayTitle(purgeAsk.rec.title)) : t.library.purgeAllAsk(deleted.length)}
+  body={t.library.purgeBody}
+  cancel={t.common.cancel}
+  confirm={purgeAsk.rec ? t.library.deleteForever : t.library.deleteAllForever}
+  danger
+  onconfirm={purgeConfirmed}
+/>
+
 <style>
   .lib {
     display: flex;
     flex-direction: column;
     height: 100%;
     min-height: 0;
+    container: lib / inline-size;
   }
   .head {
     display: flex;
@@ -614,11 +639,13 @@
   }
   .tabs {
     display: flex;
+    flex: none;
     gap: 4px;
     height: 100%;
   }
   .tabs button {
     position: relative;
+    white-space: nowrap;
     padding: 0 12px;
     color: var(--text-2);
     font-family: var(--font-score);
@@ -647,11 +674,16 @@
   }
   .find {
     display: flex;
+    flex: 1;
+    min-width: 0;
+    justify-content: flex-end;
     gap: 6px;
     align-items: center;
   }
   .search {
     position: relative;
+    flex: 0 1 220px;
+    min-width: 120px;
     color: var(--text-3);
   }
   .search :global(svg) {
@@ -660,11 +692,34 @@
     top: 8.5px;
   }
   .search input {
-    width: 220px;
+    width: 100%;
     padding-left: 32px;
   }
   .sortsel {
+    flex: none;
     width: 150px;
+  }
+  .find > :global(*) {
+    flex-shrink: 0;
+  }
+  .find > .search {
+    flex-shrink: 1;
+  }
+  /* Narrow windows (and long labels): the toolbar keeps every control by dropping labels to
+     icons, Supercut and Import plus the view switch first, then Select. */
+  @container lib (max-width: 1320px) {
+    .find .squeeze:not(.last) .b-lbl,
+    .find :global(.seg-lbl) {
+      display: none;
+    }
+    .find :global(.seg button) {
+      padding: 0 8px;
+    }
+  }
+  @container lib (max-width: 1120px) {
+    .find .squeeze.last .b-lbl {
+      display: none;
+    }
   }
   .sel-on {
     background: var(--you);

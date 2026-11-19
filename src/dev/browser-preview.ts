@@ -3,6 +3,7 @@
 // Reads come from the running app's debug-only JSON endpoints; writes are no-ops.
 import { emit } from '@tauri-apps/api/event';
 import { mockIPC, mockWindows } from '@tauri-apps/api/mocks';
+import { version } from '../../package.json';
 
 const media = new URLSearchParams(location.search).get('media') ?? '';
 const dev = (what: string) => fetch(`${media}dev/${what}`).then((r) => r.json());
@@ -14,7 +15,7 @@ mockIPC(
     const a = (args ?? {}) as Record<string, unknown>;
     switch (cmd) {
       case 'bootstrap':
-        return { settings: await dev('settings'), mediaUrl: media, version: '0.1.0', status: await dev('status'), systemLanguage: 'en', update: idleUpdate, updatedFrom: null };
+        return { settings: await dev('settings'), mediaUrl: media, version, status: await dev('status'), systemLanguage: 'en', update: idleUpdate, updatedFrom: null };
       case 'check_update':
         return idleUpdate;
       case 'import_cpu_assist':
@@ -29,8 +30,13 @@ mockIPC(
         return dev('projects');
       case 'get_project':
         return (await dev('projects')).find((p: { id: string }) => p.id === a.id);
-      case 'disk_info':
-        return { free: 1.62e12, total: 2.0e12, library: 3.1e9, level: 'good' };
+      case 'disk_info': {
+        // Sample drive figures; the library size is the real one, so the Storage page and the
+        // disk popover agree with the library summary.
+        const lib = await dev('library');
+        const size = lib.recordings.reduce((a: number, r: { size: number }) => a + r.size, 0);
+        return { free: 1.62e12, total: 2.0e12, library: size, level: 'good' };
+      }
       case 'list_devices':
         return {
           audio: { outputs: [{ id: 'spk', name: 'Speakers (Realtek(R) Audio)' }], inputs: [{ id: 'mic', name: 'Microphone (PM450 USB Microphone)' }] },

@@ -314,7 +314,7 @@
       <aside class="side">
         <div class="side-title head">{t.session.moments} <span class="num dim">{shown.length}</span></div>
         <ol class="moments">
-          {#each shown as e (e.t + e.kind)}
+          {#each shown as e (e)}
             {@const m = meta(e.kind)}
             <li>
               <button class="moment" class:live={current === e} style="--c:{m.color}" onclick={() => seek(Math.max(0, e.t - e.before))}>

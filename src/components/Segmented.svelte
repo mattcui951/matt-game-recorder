@@ -1,16 +1,22 @@
 <script lang="ts" generics="T extends string | number">
+  import Icon from './Icon.svelte';
+
+  // An option with an icon keeps its label for screen readers when a narrow parent hides the
+  // visible label (`.seg-lbl`).
   let {
     value,
     options,
     onchange,
     label,
     disabled = false,
-  }: { value: T; options: { value: T; label: string; hint?: string }[]; onchange: (v: T) => void; label: string; disabled?: boolean } = $props();
+  }: { value: T; options: { value: T; label: string; hint?: string; icon?: string }[]; onchange: (v: T) => void; label: string; disabled?: boolean } = $props();
 </script>
 
 <div class="seg" role="radiogroup" aria-label={label} class:disabled>
   {#each options as o (o.value)}
-    <button role="radio" aria-checked={value === o.value} class:on={value === o.value} {disabled} title={o.hint} onclick={() => onchange(o.value)}>{o.label}</button>
+    <button role="radio" aria-checked={value === o.value} aria-label={o.icon ? o.label : undefined} class:on={value === o.value} {disabled} title={o.hint} onclick={() => onchange(o.value)}>
+      {#if o.icon}<Icon name={o.icon} size={15} /><span class="seg-lbl">{o.label}</span>{:else}{o.label}{/if}
+    </button>
   {/each}
 </div>
 
@@ -28,6 +34,10 @@
   }
   button {
     flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
     height: 26px;
     padding: 0 10px;
     border-radius: var(--r-sm);

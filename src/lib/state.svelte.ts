@@ -92,7 +92,9 @@ $effect.root(() => {
 
 /** Change a remembered view choice (`settings.ui`). */
 export function setUiPref<K extends keyof Settings['ui']>(key: K, value: Settings['ui'][K]) {
-  if (app.settings && JSON.stringify(app.settings.ui[key]) !== JSON.stringify(value)) updateSettings((s) => (s.ui[key] = value));
+  if (app.settings && JSON.stringify(app.settings.ui[key]) !== JSON.stringify(value)) updateSettings((s) => {
+      s.ui[key] = value;
+    });
 }
 
 let toastId = 0;
