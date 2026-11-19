@@ -605,7 +605,7 @@ impl Library {
     }
 
     pub fn update<F: FnOnce(&mut Recording)>(&self, id: &str, f: F) -> Result<Recording> {
-        let mut r = self.recording(id).context(tr!("Recording not found", "找不到该录像"))?;
+        let mut r = self.recording(id).context(crate::i18n::recording_not_found())?;
         f(&mut r);
         self.save_recording(&mut r)?;
         Ok(r)
@@ -622,7 +622,7 @@ impl Library {
 
     /// Soft delete: move the files into "Recently Deleted".
     pub fn soft_delete(&self, id: &str) -> Result<()> {
-        let mut r = self.recording(id).context(tr!("Recording not found", "找不到该录像"))?;
+        let mut r = self.recording(id).context(crate::i18n::recording_not_found())?;
         if r.deleted_at.is_some() {
             return Ok(());
         }
@@ -641,7 +641,7 @@ impl Library {
     }
 
     pub fn restore(&self, id: &str) -> Result<()> {
-        let mut r = self.recording(id).context(tr!("Recording not found", "找不到该录像"))?;
+        let mut r = self.recording(id).context(crate::i18n::recording_not_found())?;
         let Some(orig) = r.original_dir.clone() else { return Ok(()) };
         let root = self.root();
         let dest = root.join(&orig);
@@ -667,7 +667,7 @@ impl Library {
 
     /// Permanently delete a recording's files.
     pub fn purge(&self, id: &str) -> Result<()> {
-        let r = self.recording(id).context(tr!("Recording not found", "找不到该录像"))?;
+        let r = self.recording(id).context(crate::i18n::recording_not_found())?;
         for f in Self::files_of(&r) {
             let _ = std::fs::remove_file(r.dir.join(f));
         }
@@ -824,7 +824,10 @@ impl Library {
 
     pub fn ensure_not_protected(&self, id: &str, protected: &[String]) -> Result<()> {
         if protected.iter().any(|p| p == id) {
-            bail!(tr!("This video is used by a protected editor project. Turn off \"Protect project videos\" in that project to delete it.", "这个视频被一个受保护的剪辑项目使用。要删除它，请先在该项目中关闭“保护项目视频”。"));
+            bail!(tr!("This video is used by a protected editor project. Turn off \"Protect project videos\" in that project to delete it.",
+                zh: "这个视频被一个受保护的剪辑项目使用。要删除它，请先在该项目中关闭“保护项目视频”。", tw: "這個影片被一個受保護的編輯專案使用。要刪除它，請先在該專案中關閉「保護專案影片」。",
+                es: "Este vídeo lo usa un proyecto protegido del editor. Desactiva \"Proteger los vídeos del proyecto\" en ese proyecto para eliminarlo.", fr: "Cette vidéo est utilisée par un projet protégé de l'éditeur. Désactivez « Protéger les vidéos du projet » dans ce projet pour la supprimer.",
+                ja: "このビデオは保護されたエディタープロジェクトで使われています。削除するには、そのプロジェクトで「プロジェクトのビデオを保護」をオフにしてください。", ko: "이 동영상은 보호된 편집기 프로젝트에서 사용 중입니다. 삭제하려면 그 프로젝트에서 \"프로젝트 동영상 보호\"를 끄세요."));
         }
         Ok(())
     }

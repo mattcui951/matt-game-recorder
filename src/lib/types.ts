@@ -1,3 +1,5 @@
+import type { LanguageSetting } from './i18n.svelte';
+
 export type Timing = { before: number; after: number };
 
 export type GameSettings = {
@@ -57,7 +59,7 @@ export type Settings = {
     watermark: boolean;
     startWithWindows: boolean;
     layout: 'art' | 'plain';
-    language: 'system' | 'en' | 'zh-CN';
+    language: LanguageSetting;
     checkUpdates: boolean;
   };
   video: {

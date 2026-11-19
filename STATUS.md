@@ -1,7 +1,7 @@
 # Status
 
 Updated: 2026-11-19
-Version: 0.4.4, released 2026-11-19
+Version: 0.4.4, released 2026-11-19; the change below is not released yet
 
 ## In progress
 
@@ -32,6 +32,12 @@ Version: 0.4.4, released 2026-11-19
 
 ## Recently done
 
+- Not released yet: seven UI languages: English, 简体中文, 繁體中文 (Taiwan wording and Taiwan
+  League client terms), Español, Français, 日本語, 한국어. "Match Windows" maps the Windows
+  display language (zh-TW/HK/MO give Traditional). Backend text (notifications, tray, job progress,
+  errors) uses `tr!` with every language required at compile time; champion names come from Data
+  Dragon in each language. Checked library, match, editor and every Settings page in the dev app;
+  translations are mine and have not been read by native speakers.
 - (0.4.4) New look "Internet Café / 网吧" (default theme, plus a light pair; old themes stay):
   graphite and neon green, Rajdhani numerals, 4/6/10px corners; today's play clock in the title bar;
   receipt tail on library rows; the match video box takes the recording's aspect ratio (no

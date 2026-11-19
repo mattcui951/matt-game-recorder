@@ -1,7 +1,7 @@
 import { emit, listen } from '@tauri-apps/api/event';
 import { api } from './api';
 import { activeThemeId, applyAppearance, broadcastAppearance, DEFAULT_APPEARANCE, themeColors } from './appearance';
-import { championsZh } from './format.svelte';
+import { championsLocal } from './format.svelte';
 import { applyLanguage, i18n, resolveLanguage, t, type LanguageSetting } from './i18n.svelte';
 import type { Appearance, CpuAssist, DiskInfo, Job, Recording, Session, Settings, Snapshot, Status, UpdateState } from './types';
 
@@ -217,9 +217,12 @@ export function setLanguage(language: LanguageSetting) {
 
 function useLanguage(language: string | undefined) {
   applyLanguage(language);
-  if (i18n.locale === 'zh-CN' && !Object.keys(championsZh.names).length) {
-    api.championNamesZh().then((names) => {
-      championsZh.names = Object.fromEntries(Object.entries(names).map(([k, v]) => [k.toLowerCase(), v]));
+  const locale = i18n.locale;
+  if (locale !== 'en' && championsLocal.locale !== locale) {
+    api.championNames(locale).then((names) => {
+      if (i18n.locale !== locale) return;
+      championsLocal.names = Object.fromEntries(Object.entries(names).map(([k, v]) => [k.toLowerCase(), v]));
+      championsLocal.locale = locale;
     }).catch(() => {});
   }
 }

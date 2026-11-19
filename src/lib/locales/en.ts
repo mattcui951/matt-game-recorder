@@ -1,5 +1,5 @@
 // English UI text, grouped by screen. Plain strings, or functions for text with values in it.
-// zh-CN.ts must provide every key (its type is `Messages`).
+// Every other catalog must provide every key (its type is `Messages`).
 
 const s = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
@@ -439,7 +439,8 @@ export const en = {
       storage: 'Storage',
       notifications: 'Notifications',
       appearance: 'Appearance',
-      language: 'Language · 语言',
+      // Other catalogs add "Language", so it can be found from any language.
+      language: 'Language',
       updates: 'Updates',
     } as Record<string, string>,
     language: {
@@ -448,7 +449,6 @@ export const en = {
       system: 'Match Windows',
       systemHint: (name: string) => `Follows your Windows display language (now ${name}).`,
       note: 'Names you gave recordings yourself stay as you wrote them.',
-      names: { en: 'English', 'zh-CN': 'Simplified Chinese' } as Record<string, string>,
     },
     games: {
       title: 'Games',
@@ -739,7 +739,7 @@ export const en = {
     default: 'Default',
     rounded: 'Rounded',
     restore: 'Restore defaults',
-    restoreHint: 'Arcade theme, default fonts, size and corners. Your saved themes are kept.',
+    restoreHint: 'Internet Café theme, default fonts, size and corners. Your saved themes are kept.',
     restoreButton: 'Restore',
     /** Themes this app named; the others are the names their makers gave them. */
     themeNames: {} as Record<string, string>,

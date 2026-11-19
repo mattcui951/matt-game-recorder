@@ -40,7 +40,7 @@ pub struct General {
     pub start_with_windows: bool,
     /// "art" shows champion art behind the UI, "plain" hides it.
     pub layout: String,
-    /// system | en | zh-CN
+    /// system | en | zh-CN | zh-TW | es | fr | ja | ko
     pub language: String,
     /// Look for new versions on GitHub in the background.
     pub check_updates: bool,

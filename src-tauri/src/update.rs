@@ -76,7 +76,10 @@ fn busy() -> bool {
 pub fn blocked(core: &Core) -> Option<String> {
     let state = core.status.read().state.clone();
     let game = crate::win::find_process(&crate::win::processes(), crate::game::GAME_EXE).is_some();
-    (game || state == "recording" || state == "saving").then(|| tr!("Update after your game: installing closes the app and would stop the recording.", "请在游戏结束后更新：安装会关闭应用并中断录制。"))
+    (game || state == "recording" || state == "saving").then(|| tr!("Update after your game: installing closes the app and would stop the recording.",
+        zh: "请在游戏结束后更新：安装会关闭应用并中断录制。", tw: "請在遊戲結束後更新：安裝會關閉應用程式並中斷錄製。",
+        es: "Actualiza después de la partida: instalar cierra la app y detendría la grabación.", fr: "Mettez à jour après votre partie : l'installation ferme l'app et arrêterait l'enregistrement.",
+        ja: "ゲームが終わってからアップデートしてください。インストールするとアプリが閉じ、録画が止まります。", ko: "게임이 끝난 뒤에 업데이트하세요. 설치하면 앱이 닫혀 녹화가 중지됩니다."))
 }
 
 /// Checks in the background: shortly after start, then every few hours (if enabled).
@@ -154,7 +157,10 @@ pub async fn install(core: &Core) -> anyhow::Result<()> {
         return Ok(());
     }
     let Some(update) = PENDING.lock().clone() else {
-        anyhow::bail!(tr!("No update to install.", "没有可安装的更新。"));
+        anyhow::bail!(tr!("No update to install.",
+            zh: "没有可安装的更新。", tw: "沒有可安裝的更新。",
+            es: "No hay ninguna actualización para instalar.", fr: "Aucune mise à jour à installer.",
+            ja: "インストールするアップデートはありません。", ko: "설치할 업데이트가 없습니다."));
     };
     set(core, |s| {
         s.phase = "downloading";
@@ -186,7 +192,10 @@ pub async fn install(core: &Core) -> anyhow::Result<()> {
             s.progress = None;
             s.error = Some(e.to_string());
         });
-        anyhow::bail!(tr!("Update failed: {e}", "更新失败：{e}"));
+        anyhow::bail!(tr!("Update failed: {e}",
+            zh: "更新失败：{e}", tw: "更新失敗：{e}",
+            es: "Error al actualizar: {e}", fr: "Échec de la mise à jour : {e}",
+            ja: "アップデートに失敗しました: {e}", ko: "업데이트 실패: {e}"));
     }
     Ok(())
 }

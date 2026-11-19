@@ -55,7 +55,10 @@ pub fn list(root: &Path) -> Vec<Project> {
 }
 
 pub fn get(root: &Path, id: &str) -> Result<Project> {
-    let bytes = std::fs::read(dir(root).join(format!("{id}.json"))).context(tr!("Project not found", "找不到该项目"))?;
+    let bytes = std::fs::read(dir(root).join(format!("{id}.json"))).context(tr!("Project not found",
+        zh: "找不到该项目", tw: "找不到該專案",
+        es: "No se encontró el proyecto", fr: "Projet introuvable",
+        ja: "プロジェクトが見つかりません", ko: "프로젝트를 찾을 수 없습니다"))?;
     Ok(serde_json::from_slice(&bytes)?)
 }
 

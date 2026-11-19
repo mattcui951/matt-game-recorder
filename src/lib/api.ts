@@ -1,8 +1,9 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { CpuAssist, Devices, DiskInfo, Job, OutplayedScan, Project, Recording, Settings, Snapshot, Status, UpdateState } from './types';
+import type { Locale } from './i18n.svelte';
 
 export const api = {
-  bootstrap: () => invoke<{ settings: Settings; mediaUrl: string; version: string; status: Status; systemLanguage: 'en' | 'zh-CN'; update: UpdateState; updatedFrom: string | null }>('bootstrap'),
+  bootstrap: () => invoke<{ settings: Settings; mediaUrl: string; version: string; status: Status; systemLanguage: Locale; update: UpdateState; updatedFrom: string | null }>('bootstrap'),
   saveSettings: (settings: Settings) => invoke<void>('save_settings', { settings }),
   systemFonts: () => invoke<string[]>('system_fonts'),
   readThemeFile: (path: string) => invoke<string>('read_theme_file', { path }),
@@ -27,7 +28,8 @@ export const api = {
   getSprite: (id: string) => invoke<string | null>('get_sprite', { id }),
   toggleScreenRecorder: () => invoke<void>('toggle_screen_recorder'),
   ensureArt: (key: string) => invoke<boolean>('ensure_art', { key }),
-  championNamesZh: () => invoke<Record<string, string>>('champion_names_zh'),
+  /** Champion names in a UI language, by Data Dragon key. */
+  championNames: (locale: Locale) => invoke<Record<string, string>>('champion_names', { locale }),
   checkUpdate: () => invoke<UpdateState>('check_update'),
   installUpdate: () => invoke<void>('install_update'),
   listProjects: () => invoke<Project[]>('list_projects'),

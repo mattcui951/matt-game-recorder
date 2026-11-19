@@ -477,7 +477,6 @@ export const zhCN: Messages = {
       system: '跟随 Windows',
       systemHint: (name) => `跟随 Windows 显示语言（当前为${name}）。`,
       note: '你自己命名的录像保持原样。',
-      names: { en: '英语', 'zh-CN': '简体中文' },
     },
     games: {
       title: '游戏',
@@ -768,7 +767,7 @@ export const zhCN: Messages = {
     default: '默认',
     rounded: '圆润',
     restore: '恢复默认',
-    restoreHint: 'Arcade 主题、默认字体、大小和圆角。你保存的主题会保留。',
+    restoreHint: '网吧主题、默认字体、大小和圆角。你保存的主题会保留。',
     restoreButton: '恢复',
     themeNames: {
       cafe: '网吧',

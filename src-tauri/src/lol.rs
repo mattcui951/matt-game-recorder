@@ -317,16 +317,28 @@ pub mod art {
         std::fs::write(&tmp, &bytes).is_ok() && std::fs::rename(&tmp, path).is_ok()
     }
 
-    /// Champion key -> name in Simplified Chinese (the champion's own name, e.g. "泰达米尔", which is
-    /// Data Dragon's `title` in zh_CN). Cached per game version; the newest cache serves offline.
-    pub fn names_zh() -> Option<std::collections::HashMap<String, String>> {
+    /// Champion key -> name in a UI language ("zh-TW"). Cached per game version; the newest cache
+    /// serves offline. None for English, whose names the frontend has.
+    pub fn names(locale: &str) -> Option<std::collections::HashMap<String, String>> {
+        let dd = match locale {
+            "zh-CN" => "zh_CN",
+            "zh-TW" => "zh_TW",
+            "es" => "es_ES",
+            "fr" => "fr_FR",
+            "ja" => "ja_JP",
+            "ko" => "ko_KR",
+            _ => return None,
+        };
+        // In zh_CN only, the champion's own name ("泰达米尔") is `title` and `name` is its epithet.
+        let field = if dd == "zh_CN" { "title" } else { "name" };
         let dir = cache_dir();
-        let path = version().map(|v| dir.join(format!("champions-{v}.zh_CN.json")));
+        let suffix = format!(".{dd}.json");
+        let path = version().map(|v| dir.join(format!("champions-{v}{suffix}")));
         if let Some(p) = &path {
-            fetch(&format!("https://ddragon.leagueoflegends.com/cdn/{}/data/zh_CN/champion.json", version()?), p);
+            fetch(&format!("https://ddragon.leagueoflegends.com/cdn/{}/data/{dd}/champion.json", version()?), p);
         }
         let file = path.filter(|p| p.exists()).or_else(|| {
-            let mut cached: Vec<PathBuf> = std::fs::read_dir(&dir).ok()?.flatten().map(|e| e.path()).filter(|p| p.to_string_lossy().ends_with(".zh_CN.json")).collect();
+            let mut cached: Vec<PathBuf> = std::fs::read_dir(&dir).ok()?.flatten().map(|e| e.path()).filter(|p| p.to_string_lossy().ends_with(&suffix)).collect();
             cached.sort();
             cached.pop()
         })?;
@@ -335,7 +347,7 @@ pub mod art {
             v.get("data")?
                 .as_object()?
                 .iter()
-                .filter_map(|(key, c)| Some((key.clone(), c.get("title")?.as_str()?.to_string())))
+                .filter_map(|(key, c)| Some((key.clone(), c.get(field)?.as_str()?.to_string())))
                 .collect(),
         )
     }

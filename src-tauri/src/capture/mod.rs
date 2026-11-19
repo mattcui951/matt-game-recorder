@@ -153,7 +153,7 @@ impl Recorder {
         cmd.args(["-flush_packets", "1", "-f", "mp4", "-movflags", "frag_keyframe+empty_moov+default_base_moof", "pipe:1"]);
         cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
         log::info!("starting capture with {encoder}: {graph}");
-        let mut child = cmd.spawn().context(tr!("failed to start ffmpeg", "无法启动 ffmpeg"))?;
+        let mut child = cmd.spawn().context(crate::i18n::ffmpeg_start_failed())?;
 
         let stdin = child.stdin.take();
         let stdout = child.stdout.take().unwrap();
@@ -287,7 +287,10 @@ impl Recorder {
         let (start, end) = {
             let mut s = self.state.lock();
             if s.init.is_empty() || s.ring.is_empty() {
-                bail!(tr!("Nothing is buffered yet. Try again in a moment.", "还没有缓存内容，请稍后再试。"));
+                bail!(tr!("Nothing is buffered yet. Try again in a moment.",
+                    zh: "还没有缓存内容，请稍后再试。", tw: "還沒有快取內容，請稍後再試。",
+                    es: "Todavía no hay nada en el búfer. Inténtalo de nuevo en un momento.", fr: "Rien n'est encore en mémoire tampon. Réessayez dans un instant.",
+                    ja: "まだバッファーに何もありません。少ししてからもう一度お試しください。", ko: "아직 버퍼에 저장된 내용이 없습니다. 잠시 후 다시 시도하세요."));
             }
             let n = s.ring.len();
             let mut picked: Vec<usize> = Vec::new();
@@ -299,7 +302,10 @@ impl Recorder {
                 }
             }
             if picked.is_empty() {
-                bail!(tr!("That part is no longer buffered.", "那一段已不在缓存中。"));
+                bail!(tr!("That part is no longer buffered.",
+                    zh: "那一段已不在缓存中。", tw: "那一段已不在快取中。",
+                    es: "Esa parte ya no está en el búfer.", fr: "Ce passage n'est plus en mémoire tampon.",
+                    ja: "その部分はもうバッファーにありません。", ko: "그 부분은 더 이상 버퍼에 없습니다."));
             }
             let first = picked[0];
             let last = *picked.last().unwrap();
@@ -461,7 +467,10 @@ pub fn screenshot(target: &Target, output: &Path) -> Result<()> {
     if !out.status.success() {
         let err = String::from_utf8_lossy(&out.stderr);
         let err = err.trim();
-        bail!(tr!("screenshot failed: {err}", "截图失败：{err}"));
+        bail!(tr!("screenshot failed: {err}",
+            zh: "截图失败：{err}", tw: "截圖失敗：{err}",
+            es: "no se pudo hacer la captura: {err}", fr: "échec de la capture d'écran : {err}",
+            ja: "スクリーンショットに失敗しました: {err}", ko: "스크린샷 실패: {err}"));
     }
     Ok(())
 }

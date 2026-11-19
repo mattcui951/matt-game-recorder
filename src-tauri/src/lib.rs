@@ -237,7 +237,7 @@ pub fn run() {
             commands::get_sprite,
             commands::toggle_screen_recorder,
             commands::ensure_art,
-            commands::champion_names_zh,
+            commands::champion_names,
             commands::check_update,
             commands::install_update,
             commands::list_projects,
@@ -279,9 +279,15 @@ pub fn run() {
 /// The tray icon's menu, in the current language.
 pub fn tray_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     MenuBuilder::new(app)
-        .text("open", tr!("Open Matt Game Recorder", "打开 Matt Game Recorder"))
-        .text("screen", tr!("Start / stop screen recording", "开始 / 停止屏幕录制"))
+        .text("open", tr!("Open Matt Game Recorder",
+            zh: "打开 Matt Game Recorder", tw: "開啟 Matt Game Recorder",
+            es: "Abrir Matt Game Recorder", fr: "Ouvrir Matt Game Recorder",
+            ja: "Matt Game Recorder を開く", ko: "Matt Game Recorder 열기"))
+        .text("screen", tr!("Start / stop screen recording",
+            zh: "开始 / 停止屏幕录制", tw: "開始 / 停止螢幕錄製",
+            es: "Iniciar / detener grabación de pantalla", fr: "Démarrer / arrêter l'enregistrement d'écran",
+            ja: "画面録画の開始 / 停止", ko: "화면 녹화 시작 / 중지"))
         .separator()
-        .text("quit", tr!("Quit", "退出"))
+        .text("quit", tr!("Quit", zh: "退出", tw: "結束", es: "Salir", fr: "Quitter", ja: "終了", ko: "종료"))
         .build()
 }

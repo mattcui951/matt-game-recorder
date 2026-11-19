@@ -19,7 +19,7 @@ mockIPC(
         return idleUpdate;
       case 'import_cpu_assist':
         return { on: false, available: false, speedup: null, measuring: false };
-      case 'champion_names_zh':
+      case 'champion_names':
         return {};
       case 'get_library':
         return dev('library');

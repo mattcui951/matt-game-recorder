@@ -12,7 +12,7 @@
   import { openUrl } from '@tauri-apps/plugin-opener';
   import { meta, SETTING_KINDS } from '../lib/events';
   import { bytes, gameName } from '../lib/format.svelte';
-  import { i18n, intlLocale, LANGUAGES, t } from '../lib/i18n.svelte';
+  import { i18n, intlLocale, LANGUAGES, languageName, t } from '../lib/i18n.svelte';
   import type { Devices, Settings } from '../lib/types';
 
   let { page }: { page: string } = $props();
@@ -124,7 +124,6 @@
   }
   const SECONDS = $derived([0, 5, 10, 15, 20, 30, 45, 60].map((v) => ({ value: v, label: t.settings.seconds(v) })));
   const NOTIFY = ['sessionStart', 'matchStart', 'matchEnd', 'manualCapture', 'gameEventCapture'] as const;
-  const languageName = (l: string) => LANGUAGES.find((x) => x.value === l)?.label ?? l;
 </script>
 
 <div class="settings">
@@ -319,8 +318,8 @@
             <span class="radio"></span><strong>{L.system}</strong><small>{L.systemHint(languageName(i18n.system))}</small>
           </button>
           {#each LANGUAGES as l (l.value)}
-            <button class="mcard" role="radio" aria-checked={s.general.language === l.value} class:on={s.general.language === l.value} onclick={() => setLanguage(l.value)} lang={l.value === 'zh-CN' ? 'zh-Hans' : 'en'}>
-              <span class="radio"></span><strong>{l.label}</strong>{#if L.names[l.value] !== l.label}<small>{L.names[l.value]}</small>{/if}
+            <button class="mcard" role="radio" aria-checked={s.general.language === l.value} class:on={s.general.language === l.value} onclick={() => setLanguage(l.value)}>
+              <span class="radio"></span><strong lang={l.lang}>{l.label}</strong>{#if languageName(l.value).toLowerCase() !== l.label.toLowerCase()}<small>{languageName(l.value)}</small>{/if}
             </button>
           {/each}
         </div>

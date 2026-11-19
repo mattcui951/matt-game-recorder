@@ -162,11 +162,14 @@ fn run_out(args: &[&str]) -> Result<String> {
         .args(args)
         .stdin(Stdio::null())
         .output()
-        .context(tr!("failed to start ffmpeg", "无法启动 ffmpeg"))?;
+        .context(crate::i18n::ffmpeg_start_failed())?;
     if !out.status.success() {
         let err = String::from_utf8_lossy(&out.stderr);
         let err = err.trim();
-        bail!(tr!("ffmpeg failed: {err}", "ffmpeg 出错：{err}"));
+        bail!(tr!("ffmpeg failed: {err}",
+            zh: "ffmpeg 出错：{err}", tw: "ffmpeg 出錯：{err}",
+            es: "ffmpeg falló: {err}", fr: "échec de ffmpeg : {err}",
+            ja: "ffmpeg でエラーが発生しました: {err}", ko: "ffmpeg 오류: {err}"));
     }
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
@@ -278,7 +281,10 @@ impl RateMeter {
 
 /// Encode a few seconds of `input` to nowhere and record how fast `encoder` runs here.
 pub fn benchmark(encoder: &str, input: &Path, bitrate_kbps: u32) -> Result<f64> {
-    let src = probe(input).context(tr!("cannot read the video", "无法读取视频"))?;
+    let src = probe(input).context(tr!("cannot read the video",
+        zh: "无法读取视频", tw: "無法讀取影片",
+        es: "no se puede leer el vídeo", fr: "impossible de lire la vidéo",
+        ja: "ビデオを読み込めません", ko: "동영상을 읽을 수 없습니다"))?;
     let fps = (src.fps.round() as u32).clamp(10, 240);
     let mut cmd = crate::win::hidden_command_low(paths::ffmpeg());
     cmd.env("SVT_LOG", "1");
@@ -290,7 +296,7 @@ pub fn benchmark(encoder: &str, input: &Path, bitrate_kbps: u32) -> Result<f64> 
     let start = (src.duration / 4.0).min(120.0);
     cmd.args(["-ss", &format!("{start:.1}"), "-t", "120"]).arg("-i").arg(input);
     cmd.args(["-map", "0:v:0"]).args(video_encoder_args(encoder, "performance", bitrate_kbps, fps)).args(["-f", "null", "-"]);
-    let mut child = cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn().context(tr!("failed to start ffmpeg", "无法启动 ffmpeg"))?;
+    let mut child = cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn().context(crate::i18n::ffmpeg_start_failed())?;
     // Skip the warm-up (encoder setup, first frames), then time the steady part.
     let mut first: Option<(u64, Instant)> = None;
     let mut last: Option<(u64, Instant)> = None;
@@ -390,7 +396,7 @@ enum Ended {
 /// (false stops it). While `paused` is set the process is suspended in place, losing no work.
 fn run_progress(cmd: &mut std::process::Command, cancel: &AtomicBool, paused: Option<&AtomicBool>, mut on_line: impl FnMut(&str) -> bool) -> Result<Ended> {
     cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
-    let mut child = cmd.spawn().context(tr!("failed to start ffmpeg", "无法启动 ffmpeg"))?;
+    let mut child = cmd.spawn().context(crate::i18n::ffmpeg_start_failed())?;
     let stdout = child.stdout.take().unwrap();
     let stderr = child.stderr.take().unwrap();
     let err_thread = std::thread::spawn(move || {
@@ -474,14 +480,20 @@ impl RenderSpec {
 }
 
 fn export_failed(err: &str) -> anyhow::Error {
-    anyhow::anyhow!(tr!("export failed: {err}", "导出失败：{err}"))
+    anyhow::anyhow!(tr!("export failed: {err}",
+        zh: "导出失败：{err}", tw: "匯出失敗：{err}",
+        es: "error al exportar: {err}", fr: "échec de l'export : {err}",
+        ja: "エクスポートに失敗しました: {err}", ko: "내보내기 실패: {err}"))
 }
 
 /// Re-encode segments into one file in a single ffmpeg run (trim, fit to the frame, volume,
 /// concat). `progress` receives 0..1.
 pub fn render(spec: &RenderSpec, cancel: &AtomicBool, mut progress: impl FnMut(f64)) -> Result<()> {
     if spec.segments.is_empty() {
-        bail!(tr!("nothing to render", "没有可渲染的内容"));
+        bail!(tr!("nothing to render",
+            zh: "没有可渲染的内容", tw: "沒有可算繪的內容",
+            es: "no hay nada que renderizar", fr: "rien à générer",
+            ja: "書き出す内容がありません", ko: "렌더링할 내용이 없습니다"));
     }
     let mut cmd = hidden_command(paths::ffmpeg());
     cmd.args(PROGRESS_ARGS);
@@ -547,7 +559,10 @@ pub fn has_audio(input: &Path) -> bool {
 /// files. A source without sound gets silence.
 pub fn render_parts(spec: &RenderSpec, cancel: &AtomicBool, mut progress: impl FnMut(f64)) -> Result<()> {
     if spec.segments.is_empty() {
-        bail!(tr!("nothing to render", "没有可渲染的内容"));
+        bail!(tr!("nothing to render",
+            zh: "没有可渲染的内容", tw: "沒有可算繪的內容",
+            es: "no hay nada que renderizar", fr: "rien à générer",
+            ja: "書き出す内容がありません", ko: "렌더링할 내용이 없습니다"));
     }
     let parts_dir = spec.output.with_extension("parts");
     std::fs::create_dir_all(&parts_dir)?;
@@ -615,9 +630,15 @@ pub fn convert(
     abort: impl Fn() -> bool,
     mut progress: impl FnMut(f64),
 ) -> Result<bool> {
-    let src = probe(input).context(tr!("cannot read the video", "无法读取视频"))?;
+    let src = probe(input).context(tr!("cannot read the video",
+        zh: "无法读取视频", tw: "無法讀取影片",
+        es: "no se puede leer el vídeo", fr: "impossible de lire la vidéo",
+        ja: "ビデオを読み込めません", ko: "동영상을 읽을 수 없습니다"))?;
     if src.duration <= 0.0 {
-        bail!(tr!("video has no duration", "视频没有时长"));
+        bail!(tr!("video has no duration",
+            zh: "视频没有时长", tw: "影片沒有時長",
+            es: "el vídeo no tiene duración", fr: "la vidéo n'a pas de durée",
+            ja: "ビデオに長さがありません", ko: "동영상에 길이 정보가 없습니다"));
     }
     let fps = (src.fps.round() as u32).clamp(10, 240);
     let gpu = family(encoder) == "nvenc";
@@ -656,7 +677,10 @@ pub fn convert(
             }
             Ended::Failed(err) => {
                 let _ = std::fs::remove_file(output);
-                bail!(tr!("conversion failed: {err}", "转换失败：{err}"))
+                bail!(tr!("conversion failed: {err}",
+                    zh: "转换失败：{err}", tw: "轉換失敗：{err}",
+                    es: "error en la conversión: {err}", fr: "échec de la conversion : {err}",
+                    ja: "変換に失敗しました: {err}", ko: "변환 실패: {err}"))
             }
         }
     };

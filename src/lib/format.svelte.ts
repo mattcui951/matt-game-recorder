@@ -72,8 +72,8 @@ const CHAMPION_NAMES: Record<string, string> = {
   FiddleSticks: 'Fiddlesticks',
 };
 
-/** Champion names in Simplified Chinese by lowercased Data Dragon key, loaded when needed. */
-export const championsZh = $state<{ names: Record<string, string> }>({ names: {} });
+/** Champion names in the UI language (`locale`) by lowercased Data Dragon key, loaded when needed. */
+export const championsLocal = $state<{ locale: string; names: Record<string, string> }>({ locale: 'en', names: {} });
 
 /**
  * One id per champion however its name was stored: recordings keep the game's name ("Bel'Veth",
@@ -84,17 +84,15 @@ export function championId(name: string): string {
   return key.replace(/[^A-Za-z]/g, '').toLowerCase();
 }
 
-function zhName(name: string): string | undefined {
-  return championsZh.names[championId(name)];
+function localName(name: string): string | undefined {
+  return championsLocal.locale === i18n.locale ? championsLocal.names[championId(name)] : undefined;
 }
 
 /** Display name for a champion stored as a Data Dragon key ("MasterYi" -> "Master Yi"). */
 export function championName(name?: string | null): string {
   if (!name) return '';
-  if (i18n.locale === 'zh-CN') {
-    const zh = zhName(name);
-    if (zh) return zh;
-  }
+  const local = localName(name);
+  if (local) return local;
   if (CHAMPION_NAMES[name]) return CHAMPION_NAMES[name];
   return name.includes(' ') ? name : name.replace(/([a-z])([A-Z])/g, '$1 $2');
 }
