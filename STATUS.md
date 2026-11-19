@@ -1,7 +1,7 @@
 # Status
 
-Updated: 2026-11-15
-Version: 0.4.3, released 2026-11-15; the change below is not released yet
+Updated: 2026-11-19
+Version: 0.4.4, released 2026-11-19
 
 ## In progress
 
@@ -32,12 +32,12 @@ Version: 0.4.3, released 2026-11-15; the change below is not released yet
 
 ## Recently done
 
-- Not released yet: new look "Internet Café / 网吧" (default theme, plus a light pair; old themes stay):
+- (0.4.4) New look "Internet Café / 网吧" (default theme, plus a light pair; old themes stay):
   graphite and neon green, Rajdhani numerals, 4/6/10px corners; today's play clock in the title bar;
   receipt tail on library rows; the match video box takes the recording's aspect ratio (no
   letterbox on ultrawide); match subtitle shows the date instead of repeating the title. Existing
   installs keep their chosen theme until switched in Appearance.
-- Not released yet: pointer feedback (taste skill, app-suited rules only): buttons rise 1px and
+- (0.4.4) Pointer feedback (taste skill, app-suited rules only): buttons rise 1px and
   press in, grid cards lift 2px, thumbnails zoom 3% in their frame, link underlines draw in; one
   global .link; reduced motion stills it all.
 - Less duplicated code (0.4.3). FFmpeg render, supercut render and import conversion
