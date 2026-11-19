@@ -18,7 +18,7 @@
 </script>
 
 <button class="tile" class:active class:compact {onclick} title={displayTitle(rec.title)}>
-  <div class="thumb">
+  <div class="thumb zoom">
     {#if src}<img {src} alt="" loading="lazy" draggable="false" />{/if}
     {#if rec.kind !== 'screenshot'}<span class="dur num">{clock(rec.duration)}</span>{/if}
     {#if rec.favorite}<span class="fav"><Icon name="star-on" size={14} /></span>{/if}

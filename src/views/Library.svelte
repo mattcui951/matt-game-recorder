@@ -471,7 +471,7 @@
                   onkeydown={(e) => onRowKey(e, s)}
                 >
                   {#if selecting}<span class="check" aria-hidden="true">{#if selected.includes(s.id)}<Icon name="check" size={14} />{/if}</span>{/if}
-                  <span class="r-thumb">{#if lr?.thumb}<img src={mediaSrc(lr, lr.thumb)} alt="" loading="lazy" draggable="false" />{/if}</span>
+                  <span class="r-thumb zoom">{#if lr?.thumb}<img src={mediaSrc(lr, lr.thumb)} alt="" loading="lazy" draggable="false" />{/if}</span>
                   <span class="r-champ">
                     {#if icon}<img src={icon} alt="" draggable="false" />{:else}<span class="ph">{(s.champion ?? s.game).slice(0, 1)}</span>{/if}
                   </span>
@@ -514,7 +514,7 @@
                   onclick={() => open(s)}
                   onkeydown={(e) => onRowKey(e, s)}
                 >
-                  <span class="c-thumb">
+                  <span class="c-thumb zoom">
                     {#if lr?.thumb}<img src={mediaSrc(lr, lr.thumb)} alt="" loading="lazy" draggable="false" />{/if}
                     <span class="c-band {s.result ?? 'none'}"></span>
                     {#if selecting}<span class="check c-check" aria-hidden="true">{#if selected.includes(s.id)}<Icon name="check" size={14} />{/if}</span>{/if}
@@ -859,14 +859,6 @@
     color: var(--text-3);
     font-size: 12.5px;
   }
-  .link {
-    color: var(--you);
-    font-size: 12.5px;
-  }
-  .link:hover {
-    text-decoration: underline;
-    text-underline-offset: 3px;
-  }
   .selbar {
     position: sticky;
     top: 0;
@@ -1160,9 +1152,11 @@
     background: var(--panel);
     text-align: left;
     border: 1px solid var(--seam);
+    transition: background 140ms, transform 220ms var(--ease-out);
   }
   .card:hover {
     background: var(--panel-2);
+    transform: translateY(-2px);
   }
   .c-thumb {
     position: relative;

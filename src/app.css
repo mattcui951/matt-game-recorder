@@ -160,10 +160,17 @@ p {
   color: var(--text);
   font-weight: 600;
   white-space: nowrap;
-  transition: background 120ms, color 120ms, opacity 120ms;
+  transition: background 120ms, color 120ms, opacity 120ms, transform 180ms var(--ease-out);
 }
 .btn:hover:not(:disabled) {
   background: var(--panel-3);
+  transform: translateY(-1px);
+}
+/* Buttons rise a pixel under the pointer and press in on click. */
+.btn:active:not(:disabled),
+.icon-btn:active:not(:disabled) {
+  transform: scale(0.96);
+  transition-duration: 60ms;
 }
 .btn:disabled {
   opacity: 0.45;
@@ -212,7 +219,7 @@ p {
   height: 30px;
   border-radius: var(--r-md);
   color: var(--text-2);
-  transition: background 120ms, color 120ms;
+  transition: background 120ms, color 120ms, transform 180ms var(--ease-out);
 }
 .icon-btn:hover:not(:disabled) {
   background: var(--panel-2);
@@ -224,6 +231,43 @@ p {
 }
 .icon-btn:disabled {
   opacity: 0.4;
+}
+
+/* Text links: the underline draws in from the left. */
+.link {
+  color: var(--you);
+  font-size: 12.5px;
+  padding-bottom: 1px;
+  background: linear-gradient(currentColor, currentColor) 0 100% / 0 1px no-repeat;
+  transition: background-size 220ms var(--ease-out);
+}
+.link:hover,
+.link:focus-visible {
+  background-size: 100% 1px;
+}
+
+/* Recording thumbnails zoom a little inside their frame under the pointer. */
+.zoom img {
+  transition: transform 320ms var(--ease-out);
+}
+:hover > .zoom img,
+.zoom:hover img {
+  transform: scale(1.03);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+  .zoom img,
+  .btn,
+  .icon-btn {
+    transform: none !important;
+  }
 }
 
 .field {

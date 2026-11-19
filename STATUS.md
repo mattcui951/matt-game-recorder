@@ -1,7 +1,7 @@
 # Status
 
 Updated: 2026-11-15
-Version: 0.4.3, released 2026-11-15
+Version: 0.4.3, released 2026-11-15; the change below is not released yet
 
 ## In progress
 
@@ -32,6 +32,9 @@ Version: 0.4.3, released 2026-11-15
 
 ## Recently done
 
+- Not released yet: pointer feedback (taste skill, app-suited rules only): buttons rise 1px and
+  press in, grid cards lift 2px, thumbnails zoom 3% in their frame, link underlines draw in; one
+  global .link; reduced motion stills it all.
 - Less duplicated code (0.4.3). FFmpeg render, supercut render and import conversion
   share one runner (`ffmpeg::run_progress`), covered by new tests on generated videos; one
   confirm dialog component; job results offered through `offerResult` (no polling); shared

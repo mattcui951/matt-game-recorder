@@ -499,8 +499,6 @@
   }
   .link {
     color: var(--text-3);
-    text-decoration: underline;
-    text-underline-offset: 3px;
     font-size: 12px;
   }
   .link:hover {

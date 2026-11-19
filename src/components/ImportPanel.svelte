@@ -169,14 +169,6 @@
     font-weight: 600;
     font-size: 14px;
   }
-  .link {
-    color: var(--you);
-    font-size: 12.5px;
-  }
-  .link:hover {
-    text-decoration: underline;
-    text-underline-offset: 3px;
-  }
   .path {
     font-size: 12.5px;
     color: var(--text-2);
