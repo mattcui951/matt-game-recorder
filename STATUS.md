@@ -1,7 +1,7 @@
 # Status
 
 Updated: 2026-11-19
-Version: 0.4.5, released 2026-11-19
+Version: 1.0.0, released 2026-11-19
 
 ## In progress
 
@@ -32,6 +32,9 @@ Version: 0.4.5, released 2026-11-19
 
 ## Recently done
 
+- (1.0.0) Russian (Русский) as the eighth UI language, in the frontend catalog and every backend `tr!`;
+  Russian plurals in the UI, "label: N" wording for counts in backend messages. Checked library,
+  match and every Settings page in the dev app; translations not read by a native speaker.
 - (0.4.5) Seven UI languages: English, 简体中文, 繁體中文 (Taiwan wording and Taiwan
   League client terms), Español, Français, 日本語, 한국어. "Match Windows" maps the Windows
   display language (zh-TW/HK/MO give Traditional). Backend text (notifications, tray, job progress,
