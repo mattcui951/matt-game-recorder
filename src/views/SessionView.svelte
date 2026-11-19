@@ -7,7 +7,7 @@
   import Timeline from '../components/Timeline.svelte';
   import { api } from '../lib/api';
   import { app, artSrc, backToLibrary, cacheSrc, errorText, go, mediaSrc, offerResult, recordingsOf, sessionById, setUiPref, toast, ui } from '../lib/state.svelte';
-  import { championName, clock, displayTitle, modeName, parseClock } from '../lib/format.svelte';
+  import { championName, clock, dayLabel, displayTitle, modeName, parseClock, timeOfDay } from '../lib/format.svelte';
   import { eventLabel, FILTER_KINDS, filterKey, meta, MULTIKILL_TIERS, supercutCounts } from '../lib/events';
   import SupercutKinds from '../components/SupercutKinds.svelte';
   import { t } from '../lib/i18n.svelte';
@@ -223,7 +223,7 @@
           <button class="name" onclick={() => ((nameDraft = rec.title), (renaming = true))} title={t.common.rename}>{displayTitle(rec.title)}<Icon name="edit" size={13} /></button>
         {/if}
         <span class="sub">
-          {displayTitle(session.title)}{session.champion ? ` · ${championName(session.champion)}` : ''}{session.gameMode ? ` · ${modeName(session.gameMode)}` : ''}
+          {rec.title === session.title ? `${dayLabel(session.startedAt)} ${timeOfDay(session.startedAt)}` : displayTitle(session.title)}{session.champion ? ` · ${championName(session.champion)}` : ''}{session.gameMode ? ` · ${modeName(session.gameMode)}` : ''}
         </span>
       </div>
       {#if session.result}<span class="result {session.result}">{session.result === 'win' ? t.common.victory : t.common.defeat}</span>{/if}
@@ -241,7 +241,7 @@
 
     <div class="main">
       <div class="stage">
-        <div class="video">
+        <div class="video" style="--ar:{rec.width && rec.height ? rec.width / rec.height : 16 / 9}">
           <Player bind:this={player} src={mediaSrc(rec, rec.file)} poster={mediaSrc(rec, rec.thumb)} image={rec.kind === 'screenshot'} bind:time bind:duration bind:paused seekTo={seekReq} />
           {#if current && !paused}
             <span class="now-chip" style="--c:{meta(current.kind).color}"><Icon name={meta(current.kind).icon} size={14} />{eventLabel(current)}</span>
@@ -436,6 +436,7 @@
     grid-template-columns: minmax(0, 1fr) 300px;
   }
   .stage {
+    container-type: inline-size;
     display: flex;
     flex-direction: column;
     min-width: 0;
@@ -443,9 +444,12 @@
     padding: 14px 16px 10px;
     gap: 8px;
   }
+  /* As tall as the recording's own shape needs (plus the 44px control bar), so an ultrawide
+     match is not letterboxed and the timeline sits right under the picture. Shrinks first
+     when the window is short. */
   .video {
     position: relative;
-    flex: 1;
+    flex: 0 1 calc(100cqw / var(--ar) + 44px);
     min-height: 200px;
   }
   .now-chip {

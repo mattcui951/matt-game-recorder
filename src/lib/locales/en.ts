@@ -65,6 +65,9 @@ export const en = {
   },
   titleBar: {
     diskFree: (free: string) => `${free} free`,
+    today: 'Today',
+    todayGames: (n: number) => s(n, 'match', 'matches'),
+    todayAria: (time: string, n: number) => `Played today: ${time} in ${s(n, 'match', 'matches')}`,
     diskButton: (free: string, pct: number) => `Disk space: ${free} free, ${pct}% used`,
     freeOf: (total: string) => `free of ${total}`,
     usedAria: (pct: number) => `${pct}% of the drive used`,
@@ -379,6 +382,8 @@ export const en = {
     dayAria: (date: string, n: number) => `${date}: ${s(n, 'match', 'matches')}`,
     /** The match count on a day in the date bar. */
     dayMatches: (n: number) => s(n, 'match', 'matches'),
+    rcptLength: 'Length',
+    rcptSize: 'Size',
     periodAllYears: (when: string) => `${when}, all years`,
     count: (shown: number, total: number) => (shown === total ? s(total, 'match', 'matches') : `${shown} of ${s(total, 'match', 'matches')}`),
     inPeriod: (period: string, day: boolean) => `${day ? 'on' : 'in'} ${period}`,

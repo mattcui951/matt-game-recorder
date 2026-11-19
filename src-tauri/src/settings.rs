@@ -333,17 +333,17 @@ pub struct Appearance {
 impl Default for Appearance {
     fn default() -> Self {
         Self {
-            theme: "arcade".into(),
+            theme: "cafe".into(),
             follow_system: false,
-            light_theme: "rose-pine-dawn".into(),
-            dark_theme: "rose-pine-moon".into(),
+            light_theme: "cafe-day".into(),
+            dark_theme: "cafe".into(),
             overrides: BTreeMap::new(),
             font_ui: String::new(),
             font_score: String::new(),
             ui_scale: 100,
             corners: "default".into(),
             custom_themes: Vec::new(),
-            window_bg: "#100d26".into(),
+            window_bg: "#0d1014".into(),
         }
     }
 }

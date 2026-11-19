@@ -11,29 +11,29 @@ import type { Appearance, CustomTheme } from './types';
 export const DEFAULT_APPEARANCE: Appearance = {
   theme: DEFAULT_THEME,
   followSystem: false,
-  lightTheme: 'rose-pine-dawn',
-  darkTheme: 'rose-pine-moon',
+  lightTheme: 'cafe-day',
+  darkTheme: 'cafe',
   overrides: {},
   fontUi: '',
   fontScore: '',
   uiScale: 100,
   corners: 'default',
   customThemes: [],
-  windowBg: '#100d26',
+  windowBg: '#0d1014',
 };
 
 export const DEFAULT_FONT_UI = 'Segoe UI Variable Text';
-export const DEFAULT_FONT_SCORE = 'Chakra Petch';
+export const DEFAULT_FONT_SCORE = 'Rajdhani';
 /** Fonts that ship inside the app (always available, even if not installed in Windows). */
-export const BUNDLED_FONTS = ['Chakra Petch'];
+export const BUNDLED_FONTS = ['Rajdhani', 'Chakra Petch'];
 
-const CORNERS: Record<string, [number, number, number]> = { sharp: [1, 2, 2], default: [3, 4, 6], round: [6, 8, 12] };
+const CORNERS: Record<string, [number, number, number]> = { sharp: [1, 2, 2], default: [4, 6, 10], round: [6, 9, 14] };
 const HAS_TAURI = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 const CACHE_KEY = 'mgr.theme';
 
 /** A custom theme as a full theme: missing colors come from a built-in of the same lightness. */
 export function customToTheme(c: CustomTheme): ThemeDef {
-  const base = THEMES.find((x) => x.id === (c.dark ? 'arcade' : 'github-light'))!.colors;
+  const base = THEMES.find((x) => x.id === (c.dark ? 'cafe' : 'cafe-day'))!.colors;
   const colors = { ...base };
   for (const tk of TOKENS) if (isHex(c.colors[tk.key] ?? '')) colors[tk.key] = c.colors[tk.key].toLowerCase();
   return { id: c.id, name: c.name, dark: c.dark, colors, custom: true };

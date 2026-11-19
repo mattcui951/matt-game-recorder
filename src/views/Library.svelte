@@ -492,8 +492,10 @@
                     {#if st.objectives}<span class="tag obj"><Icon name="turret" size={12} />{st.objectives}</span>{/if}
                     {#if st.clips}<span class="tag"><Icon name="scissors" size={12} />{t.library.clips(st.clips)}</span>{/if}
                   </span>
-                  <span class="r-dur num">{clock(st.duration)}</span>
-                  <span class="r-size num">{bytes(st.size)}</span>
+                  <span class="r-rcpt num">
+                    <span><small>{t.library.rcptLength}</small>{clock(st.duration)}</span>
+                    <span class="r-size"><small>{t.library.rcptSize}</small>{bytes(st.size)}</span>
+                  </span>
                   <button class="del" onclick={(e) => (e.stopPropagation(), deleteSessions([s.id]))} onkeydown={(e) => e.stopPropagation()} aria-label={t.library.deleteThis(displayTitle(s.title))} title={t.common.delete}>
                     <Icon name="trash" size={16} />
                   </button>
@@ -960,7 +962,7 @@
   }
   .row {
     display: grid;
-    grid-template-columns: 128px 44px minmax(180px, 1.4fr) 92px 150px minmax(120px, 1fr) 76px 76px 32px;
+    grid-template-columns: 128px 44px minmax(180px, 1.4fr) 92px 150px minmax(120px, 1fr) 196px 32px;
     cursor: pointer;
     align-items: center;
     gap: 16px;
@@ -977,7 +979,7 @@
     background: var(--panel-2);
   }
   .row.selecting {
-    grid-template-columns: 22px 128px 44px minmax(180px, 1.4fr) 92px 150px minmax(120px, 1fr) 76px 76px 32px;
+    grid-template-columns: 22px 128px 44px minmax(180px, 1.4fr) 92px 150px minmax(120px, 1fr) 196px 32px;
   }
   .row.picked,
   .card.picked {
@@ -1130,11 +1132,28 @@
   .tag.obj {
     color: var(--objective);
   }
-  .r-dur,
-  .r-size {
+  /* The row ends like a session receipt: a dashed tear line, then what it cost. */
+  .r-rcpt {
+    align-self: stretch;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 24px;
+    margin: -8px 0;
+    padding-left: 18px;
+    border-left: 1px dashed var(--seam-strong);
+  }
+  .r-rcpt > span {
+    display: grid;
+    gap: 1px;
+    min-width: 58px;
     text-align: right;
-    color: var(--text-2);
-    font-size: 14px;
+    font-size: 16px;
+    color: var(--text);
+  }
+  .r-rcpt small {
+    font: 400 11px var(--font-ui);
+    color: var(--text-3);
   }
 
   .grid {
@@ -1289,10 +1308,10 @@
 
   @media (max-width: 1280px) {
     .row {
-      grid-template-columns: 112px 40px minmax(160px, 1.4fr) 80px 132px minmax(0, 1fr) 64px 32px;
+      grid-template-columns: 112px 40px minmax(160px, 1.4fr) 80px 132px minmax(0, 1fr) 96px 32px;
     }
     .row.selecting {
-      grid-template-columns: 22px 112px 40px minmax(160px, 1.4fr) 80px 132px minmax(0, 1fr) 64px 32px;
+      grid-template-columns: 22px 112px 40px minmax(160px, 1.4fr) 80px 132px minmax(0, 1fr) 96px 32px;
     }
     .r-size {
       display: none;

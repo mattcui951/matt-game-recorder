@@ -1,67 +1,74 @@
 # Design: Matt Game Recorder
 
-World: an arcade cabinet's high-score memory. Every match is a scored run you can replay;
-every game event is a lit mark sized to the seconds it captured. Mode: Operate (a working
-tool), so the world lends only type, palette, density and one signature move. Layout,
-navigation and controls are the standard ones for a desktop media app.
+World: a gaming cafe (网吧) after dark. Lights low, graphite glass, one neon colour that means
+you, and the session clock over every seat. Every match leaves a receipt: what you played and
+what it cost. Mode: Operate (a working tool), so the world lends only type, palette, density and
+its signature moves. Layout, navigation and controls are the standard ones for a desktop media app.
 
 ## Color
 
-Ground is deep indigo, never black. Phosphor colors each carry exactly one meaning; never use
-one for decoration or for a different meaning.
+The default theme is `cafe` (Internet Café, 网吧) with `cafe-day` as its light pair; every other
+built-in theme stays selectable in Appearance and fills the same 18 tokens (`src/lib/themes.ts`).
+Each accent carries exactly one meaning; never use one for decoration or a different meaning.
 
-| Token | Value | Job |
+| Token | cafe | Job |
 |---|---|---|
-| `--bg` | `#100d26` | app ground |
-| `--bg-sunk` | `#0b0920` | title bar, rail, inputs, video wells |
-| `--panel` / `--panel-2` / `--panel-3` | `#161238` / `#1d1847` / `#262058` | raised surfaces, hover, active |
-| `--seam` / `--seam-strong` | `#2a2461` / `#3b3485` | 1px dividers and outlines |
-| `--text` / `--text-2` / `--text-3` | `#eeebff` / `#bdb6e6` / `#908ac2` | primary, secondary, tertiary text (all >= 4.5:1 on `--bg`) |
-| `--you` | `#3fe0f0` | you: kills, multikills, your APM, selection, primary actions, focus |
-| `--death` | `#ff4f8b` | deaths, destructive actions, recording indicator, defeat |
-| `--objective` | `#ffc83d` | turret, inhibitor, dragon, herald, baron, favorites star |
-| `--win` | `#52f0a8` | victory, healthy status |
-| `--assist` | `#b197ff` | assists, ultimate |
-| `--warn` | `#ffa53d` | low disk, connecting, missing sources |
-| `--mark` | `#e8e4ff` | manual bookmarks |
+| `--bg` | `#0d1014` | app ground |
+| `--bg-sunk` | `#090b0e` | title bar, rail, inputs, video wells |
+| `--panel` / `--panel-2` / `--panel-3` | `#141920` / `#1b2129` / `#232b35` | raised surfaces, hover, active |
+| `--seam` / `--seam-strong` | `#222a34` / `#334050` | 1px dividers, outlines, the receipt tear line |
+| `--text` / `--text-2` / `--text-3` | `#e8ecef` / `#b7c0ca` / `#8c96a3` | primary, secondary, tertiary (text-3 is 6.4:1 on bg) |
+| `--you` | `#2ee6a6` | you: kills, multikills, your APM, selection, primary actions, focus, the session clock |
+| `--death` | `#ff5c70` | deaths, destructive actions, recording, defeat |
+| `--objective` | `#ffb547` | turret, inhibitor, dragon, herald, baron, favourites star |
+| `--win` | `#4cc9ff` | victory, healthy status |
+| `--assist` | `#b9a3ff` | assists, ultimate |
+| `--warn` | `#ff8a3d` | low disk, connecting, missing sources |
+| `--mark` | `#e8ecef` | manual bookmarks |
 
 KDA is always kills in `--you`, deaths in `--death`, assists in `--assist`.
 
 ## Type
 
-- UI text: Segoe UI Variable (system), 13.5px base, 1.45 line height.
-- Score voice: Chakra Petch 500/600/700, self-hosted via `@fontsource/chakra-petch`. Used for
-  headings, KDA, timers, sizes and every number (`.num`, tabular figures). Section labels in it
-  are uppercase with 0.06-0.08em tracking.
-- No pixel fonts, no glow, no scanlines.
+- UI text: Segoe UI Variable (system; Microsoft YaHei for Chinese), 13.5px base, 1.45 line height.
+- Score voice: Rajdhani 500/600/700, self-hosted via `@fontsource/rajdhani`, for headings, KDA,
+  timers, sizes and every number (`.num`, tabular figures). Chakra Petch stays bundled as an
+  Appearance choice.
+- No glow, no scanlines, no pixel fonts.
 
 ## Shape and depth
 
-- Radii: 3px (small controls), 4px (buttons, inputs), 6px (panels, cards, popovers).
-- Elevation is declared once: panels use a 1px seam; only popovers, toasts and modals use the
-  `--shadow-pop` shadow.
-- Motion: `--ease-out` (cubic-bezier(0.16, 1, 0.3, 1)), 120-220ms; popovers rise 4px, toasts 8px,
-  the REC dot blinks in steps.
+- Radii (Appearance "default" corners): 4px small controls, 6px buttons and inputs, 10px panels,
+  cards and popovers. Sharp and round corners are user choices.
+- Elevation is declared once: panels use a 1px seam; only popovers, toasts and modals use
+  `--shadow-pop`.
+- Motion: `--ease-out`, 120-320ms. Buttons rise 1px on hover and press to 0.96; grid cards lift
+  2px; thumbnails (`.zoom`) scale 1.03 inside their frame; text links draw their underline.
+  Reduced motion stills all of it.
 
-## Signature move
+## Signature moves
 
-The event lane on every timeline: each event is a chip at its moment plus a bar whose width is
-the real capture window (seconds before and after). Overlapping chips step to a second row;
-multikills carry a count badge. The library reads as a score table: one row per run with the
-champion portrait, result, KDA in large score numerals, tags, duration and size.
+- **Session clock:** the title bar shows today's League play time and match count (`今日 1:24:10
+  3 局`), from today's sessions, start to end. Green when you have played today, muted otherwise.
+- **Receipt tail:** every library row ends with a dashed tear line and the match's bill:
+  length and size, label over value.
+- **Event lane:** on the match timeline each event is a chip at its moment plus a bar as wide as
+  its real capture window; multikills carry a count.
 
-Recently deleted items keep a struck, grayscale VOID state until purged.
+Recently deleted items keep a struck, grayscale state until purged.
 
 ## Components
 
-`Icon` (one 24px stroke family, 1.8 stroke, including one glyph per event kind), `Toggle`,
-`Segmented`, `Select`, `Slider`, `Popover`, `HotkeyInput`, `RecordingTile`, `Player`, `Timeline`,
-`TitleBar`, `Rail`, `Toasts`. Buttons: `.btn` (default), `.btn.primary` (cyan), `.btn.danger`
-(outlined magenta), `.btn.ghost`; `.icon-btn` with `.on` for active tools.
+`Icon` (one 24px stroke family, 1.8 stroke, one glyph per event kind), `Toggle`, `Segmented`,
+`Select`, `Slider`, `Popover`, `ConfirmDialog`, `HotkeyInput`, `RecordingTile`, `Player`, `Timeline`,
+`TitleBar`, `Rail`, `Toasts`. Buttons: `.btn` (default), `.btn.primary` (accent), `.btn.danger`
+(outlined), `.btn.ghost`; `.icon-btn` with `.on` for active tools; `.link` for text links.
 
 ## Layout
 
-Title bar 40px (custom, draggable), rail 56px, content fills the rest. The session view puts the
-player and timeline left and a 300px moments/clips column right (360px on very wide screens).
-Champion splash art can sit behind the content at 11% opacity, fading out downward
+Title bar 40px (custom, draggable), rail 56px, content fills the rest. The match view puts the
+player and timeline left and a 300px moments/clips column right. The video box takes the
+recording's own aspect ratio (container query on `.stage`), so ultrawide matches are not
+letterboxed and the timeline sits right under the picture. Settings pages share `.settings-page`
+styles in `app.css`. Champion splash art can sit behind the content at low opacity
 (Change app layout > Show champion art).

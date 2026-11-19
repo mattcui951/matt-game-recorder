@@ -79,6 +79,9 @@ export const zhCN: Messages = {
   },
   titleBar: {
     diskFree: (free) => `可用 ${free}`,
+    today: '今日',
+    todayGames: (n) => `${n} 局`,
+    todayAria: (time, n) => `今日游戏 ${time}，共 ${n} 局`,
     diskButton: (free, pct) => `磁盘空间：可用 ${free}，已用 ${pct}%`,
     freeOf: (total) => `可用，共 ${total}`,
     usedAria: (pct) => `磁盘已用 ${pct}%`,
@@ -408,6 +411,8 @@ export const zhCN: Messages = {
     daysIn: (month) => `${month}的日期`,
     dayAria: (date, n) => `${date}：${n} 场对局`,
     dayMatches: (n) => `${n} 局`,
+    rcptLength: '时长',
+    rcptSize: '大小',
     periodAllYears: (when) => `${when}（所有年份）`,
     count: (shown, total) => (shown === total ? `${total} 场对局` : `${shown} / ${total} 场对局`),
     inPeriod: (period) => `· ${period}`,
@@ -766,6 +771,8 @@ export const zhCN: Messages = {
     restoreHint: 'Arcade 主题、默认字体、大小和圆角。你保存的主题会保留。',
     restoreButton: '恢复',
     themeNames: {
+      cafe: '网吧',
+      'cafe-day': '网吧 · 白天',
       'high-contrast-dark': '高对比度深色',
       'high-contrast-light': '高对比度浅色',
     },

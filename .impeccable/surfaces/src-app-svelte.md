@@ -13,15 +13,15 @@ Audience and job: Matt, one League player, opens the app right after a match to 
 
 ## Direction contract
 
-THESIS: The recorder is a cabinet's high-score memory: every match is a scored run you can replay, and every event is a lit mark sized to the seconds it captured. Refuses the category default of grey cards plus one pink accent and dot-sized timeline icons.
+THESIS: The recorder is your seat at a gaming cafe after dark: a session clock over the seat, lights low, one neon colour for you, and every match leaves a receipt of what it cost. Refuses the category default of grey cards plus one pink accent.
 
-OWN-WORLD: Deep indigo cabinet ground (never pure black), raised panels one step lighter with 1px seams. Full phosphor palette with jobs: cyan = you (kills, multikills, your APM), magenta-red = deaths, gold = objectives (turret, inhib, dragon, baron, herald), mint = victory/healthy states, violet = assists/ultimate, amber = warnings. Chunky condensed numerals (tabular) for every score, time and size readout; a quiet UI sans for labels and prose. Square-ish corners (2-4px), no glows, no scanlines, no pixel fonts.
+OWN-WORLD: Graphite glass ground (#0d1014), panels one step lighter with 1px seams. Accents with jobs: neon green = you (kills, multikills, APM, selection, primary, session clock), red = deaths, amber = objectives, blue = victory, lavender = assists, orange = warnings. Rajdhani numerals for every score, time and size; Segoe UI / YaHei for prose. 4/6/10px corners, no glow.
 
 STORY: He sees his latest run on top, KDA and result at a glance, opens it, and the timeline already tells the match story by color: red clusters are where he died. One click jumps to a moment; filters and supercut turn the marks into clips.
 
 FIRST VIEWPORT: Left rail (Library, Editor, Settings). Top bar: app name left, right side disk meter, events status light, screen recorder, layout. Library: a high-score table of sessions grouped by day, each row/tile with champion portrait, result band, KDA in score numerals, duration, size; latest match first. Match viewer: video fills the work area; below it the event lane with colored marks whose width equals the clip window, APM sparkline under it, tools at the lane's right end.
 
-FORM: Arcade high-score / attract-screen world, candidate 7 of 7 on the grounded list (assigned by the roll). seed:ab1d21bb69ce9627
+FORM: Internet cafe (网吧) session screens and receipts; the user chose IMPECCABLE'S PICK over the roll after one re-roll. seed:7c367d1b819cc78a
 Raise (from Labanotation, declined): length is exact duration; event marks draw their real before/after capture window, not a dot.
 Raise (from Jet-age ticket wallet, declined): nothing disappears, it cancels; deleted media keeps a struck VOID state in Recently deleted until purged.
 Raise (from Crouwel grid, declined): one visible cell grid; library tiles and settings rows snap to a single column module.

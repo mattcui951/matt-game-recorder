@@ -59,6 +59,9 @@ const t = (id: string, name: string, dark: boolean, c: string, extra: Partial<Th
 
 // Order: bg bgSunk panel panel2 panel3 seam seamStrong | text text2 text3 | you youInk death objective win assist warn mark
 export const THEMES: ThemeDef[] = [
+  // The app's own look: a gaming cafe after dark, lights low, neon green for you.
+  t('cafe', 'Internet Café', true, '#0d1014 #090b0e #141920 #1b2129 #232b35 #222a34 #334050  #e8ecef #b7c0ca #8c96a3  #2ee6a6 #04281c #ff5c70 #ffb547 #4cc9ff #b9a3ff #ff8a3d #e8ecef'),
+  t('cafe-day', 'Internet Café Day', false, '#f2f4f6 #e7ebef #ffffff #eef1f4 #dfe5eb #d5dce4 #aeb9c5  #10151b #36404b #56616d  #037a53 #ffffff #c8243b #925c00 #0a6fa8 #6a4bd1 #b54a0c #10151b'),
   t('arcade', 'Arcade', true, '#100d26 #0b0920 #161238 #1d1847 #262058 #2a2461 #3b3485  #eeebff #bdb6e6 #908ac2  #3fe0f0 #062a30 #ff4f8b #ffc83d #52f0a8 #b197ff #ffa53d #e8e4ff'),
   t('rose-pine', 'Rosé Pine', true, '#191724 #16141f #1f1d2e #26233a #312e48 #403d52 #524f67  #e0def4 #b9b6d3 #908caa  #c4a7e7 #191724 #eb6f92 #f6c177 #9ccfd8 #ebbcba #f2a46d #e0def4'),
   t('rose-pine-moon', 'Rosé Pine Moon', true, '#232136 #1f1d30 #2a273f #393552 #44415a #44415a #56526e  #e0def4 #bebbd8 #9692b0  #c4a7e7 #232136 #eb6f92 #f6c177 #9ccfd8 #ea9a97 #f2a46d #e0def4'),
@@ -89,7 +92,7 @@ export const THEMES: ThemeDef[] = [
   t('high-contrast-light', 'High Contrast Light', false, '#ffffff #ffffff #ffffff #f0f0f0 #dcdcdc #6e6e6e #000000  #000000 #000000 #262626  #0040c0 #ffffff #b00020 #7a4f00 #006b21 #6b1fb3 #9a4a00 #000000', { contrast: true }),
 ];
 
-export const DEFAULT_THEME = 'arcade';
+export const DEFAULT_THEME = 'cafe';
 
 // ---------- color math ----------
 

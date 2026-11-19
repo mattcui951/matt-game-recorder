@@ -10,3 +10,4 @@ src-tauri/binaries/*.exe
 *.key.password
 .env
 tools/__pycache__/
+.impeccable/mocks/

@@ -1,37 +1,40 @@
+@import '@fontsource/rajdhani/500.css';
+@import '@fontsource/rajdhani/600.css';
+@import '@fontsource/rajdhani/700.css';
 @import '@fontsource/chakra-petch/500.css';
 @import '@fontsource/chakra-petch/600.css';
 @import '@fontsource/chakra-petch/700.css';
 
 :root {
-  /* Cabinet ground: deep indigo, never black. */
-  --bg: #100d26;
-  --bg-sunk: #0b0920;
-  --panel: #161238;
-  --panel-2: #1d1847;
-  --panel-3: #262058;
-  --seam: #2a2461;
-  --seam-strong: #3b3485;
+  /* Internet Cafe after dark (the default theme; appearance.ts sets the active one). */
+  --bg: #0d1014;
+  --bg-sunk: #090b0e;
+  --panel: #141920;
+  --panel-2: #1b2129;
+  --panel-3: #232b35;
+  --seam: #222a34;
+  --seam-strong: #334050;
 
-  --text: #eeebff;
-  --text-2: #bdb6e6;
-  --text-3: #908ac2;
+  --text: #e8ecef;
+  --text-2: #b7c0ca;
+  --text-3: #8c96a3;
 
-  /* Phosphor palette: every color has one job. */
-  --you: #3fe0f0;        /* you: kills, multikills, your APM, primary actions */
-  --you-ink: #062a30;
-  --death: #ff4f8b;      /* deaths, destructive, recording */
-  --objective: #ffc83d;  /* turret, inhibitor, dragon, herald, baron */
-  --win: #52f0a8;        /* victory, healthy */
-  --assist: #b197ff;     /* assists, ultimate */
-  --warn: #ffa53d;       /* low disk, partial events */
-  --mark: #e8e4ff;       /* bookmarks, manual */
+  /* Every color has one job. */
+  --you: #2ee6a6;        /* you: kills, multikills, your APM, primary actions, now */
+  --you-ink: #04281c;
+  --death: #ff5c70;      /* deaths, destructive, recording */
+  --objective: #ffb547;  /* turret, inhibitor, dragon, herald, baron */
+  --win: #4cc9ff;        /* victory, healthy */
+  --assist: #b9a3ff;     /* assists, ultimate */
+  --warn: #ff8a3d;       /* low disk, partial events */
+  --mark: #e8ecef;       /* bookmarks, manual */
 
   --font-ui: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
-  --font-score: 'Chakra Petch', 'Segoe UI', sans-serif;
+  --font-score: 'Rajdhani', 'Segoe UI', sans-serif;
 
-  --r-sm: 3px;
-  --r-md: 4px;
-  --r-lg: 6px;
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 10px;
 
   --shadow-pop: 0 10px 28px -6px rgb(4 2 18 / 0.7), 0 2px 6px rgb(4 2 18 / 0.5);
 

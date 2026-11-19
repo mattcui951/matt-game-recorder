@@ -27,6 +27,14 @@
   const evText = $derived(ev === 'good' ? t.titleBar.eventsGood : ev === 'down' ? t.titleBar.eventsDown : ev === 'partial' ? t.titleBar.eventsPartial : t.titleBar.eventsIdle);
   const rec = $derived(app.status.state === 'recording');
   const importJob = $derived(Object.values(app.jobs).find((j) => j.kind === 'import' && j.state === 'running'));
+
+  // The session clock: League time played today, from today's sessions (start to end).
+  const today = $derived.by(() => {
+    const day = new Date().toDateString();
+    const games = app.library.sessions.filter((s) => s.game === 'League of Legends' && s.endedAt && new Date(s.startedAt).toDateString() === day);
+    const secs = games.reduce((a, s) => a + Math.max(0, (Date.parse(s.endedAt!) - Date.parse(s.startedAt)) / 1000), 0);
+    return { n: games.length, secs };
+  });
 </script>
 
 <header class="bar" data-tauri-drag-region>
@@ -53,6 +61,11 @@
   </div>
 
   <div class="tools">
+    <span class="today" class:none={!today.n} role="img" aria-label={t.titleBar.todayAria(clock(today.secs), today.n)}>
+      <small>{t.titleBar.today}</small>
+      <span class="num clk">{clock(today.secs)}</span>
+      <small>{t.titleBar.todayGames(today.n)}</small>
+    </span>
     <Popover bind:open={diskOpen} width={260}>
       {#snippet anchor(toggle)}
         <button class="pill" onclick={toggle} aria-label={t.titleBar.diskButton(bytes(disk?.free ?? 0), Math.round(usedPct))}>
@@ -219,6 +232,25 @@
     align-items: center;
     gap: 4px;
     height: 100%;
+  }
+  .today {
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+    height: 28px;
+    padding: 0 12px 0 4px;
+    margin-right: 6px;
+    border-right: 1px solid var(--seam);
+    line-height: 28px;
+    color: var(--text-3);
+    font-size: 12px;
+  }
+  .today .clk {
+    font-size: 16px;
+    color: var(--you);
+  }
+  .today.none .clk {
+    color: var(--text-3);
   }
   .pill {
     display: flex;
