@@ -327,6 +327,7 @@ pub mod art {
             "fr" => "fr_FR",
             "ja" => "ja_JP",
             "ko" => "ko_KR",
+            "ru" => "ru_RU",
             _ => return None,
         };
         // In zh_CN only, the champion's own name ("泰达米尔") is `title` and `name` is its epithet.

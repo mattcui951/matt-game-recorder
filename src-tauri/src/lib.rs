@@ -282,12 +282,12 @@ pub fn tray_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         .text("open", tr!("Open Matt Game Recorder",
             zh: "打开 Matt Game Recorder", tw: "開啟 Matt Game Recorder",
             es: "Abrir Matt Game Recorder", fr: "Ouvrir Matt Game Recorder",
-            ja: "Matt Game Recorder を開く", ko: "Matt Game Recorder 열기"))
+            ja: "Matt Game Recorder を開く", ko: "Matt Game Recorder 열기", ru: "Открыть Matt Game Recorder"))
         .text("screen", tr!("Start / stop screen recording",
             zh: "开始 / 停止屏幕录制", tw: "開始 / 停止螢幕錄製",
             es: "Iniciar / detener grabación de pantalla", fr: "Démarrer / arrêter l'enregistrement d'écran",
-            ja: "画面録画の開始 / 停止", ko: "화면 녹화 시작 / 중지"))
+            ja: "画面録画の開始 / 停止", ko: "화면 녹화 시작 / 중지", ru: "Начать / остановить запись экрана"))
         .separator()
-        .text("quit", tr!("Quit", zh: "退出", tw: "結束", es: "Salir", fr: "Quitter", ja: "終了", ko: "종료"))
+        .text("quit", tr!("Quit", zh: "退出", tw: "結束", es: "Salir", fr: "Quitter", ja: "終了", ko: "종료", ru: "Выйти"))
         .build()
 }

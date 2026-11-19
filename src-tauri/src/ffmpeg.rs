@@ -169,7 +169,7 @@ fn run_out(args: &[&str]) -> Result<String> {
         bail!(tr!("ffmpeg failed: {err}",
             zh: "ffmpeg 出错：{err}", tw: "ffmpeg 出錯：{err}",
             es: "ffmpeg falló: {err}", fr: "échec de ffmpeg : {err}",
-            ja: "ffmpeg でエラーが発生しました: {err}", ko: "ffmpeg 오류: {err}"));
+            ja: "ffmpeg でエラーが発生しました: {err}", ko: "ffmpeg 오류: {err}", ru: "ошибка ffmpeg: {err}"));
     }
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
@@ -284,7 +284,7 @@ pub fn benchmark(encoder: &str, input: &Path, bitrate_kbps: u32) -> Result<f64> 
     let src = probe(input).context(tr!("cannot read the video",
         zh: "无法读取视频", tw: "無法讀取影片",
         es: "no se puede leer el vídeo", fr: "impossible de lire la vidéo",
-        ja: "ビデオを読み込めません", ko: "동영상을 읽을 수 없습니다"))?;
+        ja: "ビデオを読み込めません", ko: "동영상을 읽을 수 없습니다", ru: "не удаётся прочитать видео"))?;
     let fps = (src.fps.round() as u32).clamp(10, 240);
     let mut cmd = crate::win::hidden_command_low(paths::ffmpeg());
     cmd.env("SVT_LOG", "1");
@@ -483,7 +483,7 @@ fn export_failed(err: &str) -> anyhow::Error {
     anyhow::anyhow!(tr!("export failed: {err}",
         zh: "导出失败：{err}", tw: "匯出失敗：{err}",
         es: "error al exportar: {err}", fr: "échec de l'export : {err}",
-        ja: "エクスポートに失敗しました: {err}", ko: "내보내기 실패: {err}"))
+        ja: "エクスポートに失敗しました: {err}", ko: "내보내기 실패: {err}", ru: "ошибка экспорта: {err}"))
 }
 
 /// Re-encode segments into one file in a single ffmpeg run (trim, fit to the frame, volume,
@@ -493,7 +493,7 @@ pub fn render(spec: &RenderSpec, cancel: &AtomicBool, mut progress: impl FnMut(f
         bail!(tr!("nothing to render",
             zh: "没有可渲染的内容", tw: "沒有可算繪的內容",
             es: "no hay nada que renderizar", fr: "rien à générer",
-            ja: "書き出す内容がありません", ko: "렌더링할 내용이 없습니다"));
+            ja: "書き出す内容がありません", ko: "렌더링할 내용이 없습니다", ru: "нечего обрабатывать"));
     }
     let mut cmd = hidden_command(paths::ffmpeg());
     cmd.args(PROGRESS_ARGS);
@@ -562,7 +562,7 @@ pub fn render_parts(spec: &RenderSpec, cancel: &AtomicBool, mut progress: impl F
         bail!(tr!("nothing to render",
             zh: "没有可渲染的内容", tw: "沒有可算繪的內容",
             es: "no hay nada que renderizar", fr: "rien à générer",
-            ja: "書き出す内容がありません", ko: "렌더링할 내용이 없습니다"));
+            ja: "書き出す内容がありません", ko: "렌더링할 내용이 없습니다", ru: "нечего обрабатывать"));
     }
     let parts_dir = spec.output.with_extension("parts");
     std::fs::create_dir_all(&parts_dir)?;
@@ -633,12 +633,12 @@ pub fn convert(
     let src = probe(input).context(tr!("cannot read the video",
         zh: "无法读取视频", tw: "無法讀取影片",
         es: "no se puede leer el vídeo", fr: "impossible de lire la vidéo",
-        ja: "ビデオを読み込めません", ko: "동영상을 읽을 수 없습니다"))?;
+        ja: "ビデオを読み込めません", ko: "동영상을 읽을 수 없습니다", ru: "не удаётся прочитать видео"))?;
     if src.duration <= 0.0 {
         bail!(tr!("video has no duration",
             zh: "视频没有时长", tw: "影片沒有時長",
             es: "el vídeo no tiene duración", fr: "la vidéo n'a pas de durée",
-            ja: "ビデオに長さがありません", ko: "동영상에 길이 정보가 없습니다"));
+            ja: "ビデオに長さがありません", ko: "동영상에 길이 정보가 없습니다", ru: "у видео нет длительности"));
     }
     let fps = (src.fps.round() as u32).clamp(10, 240);
     let gpu = family(encoder) == "nvenc";
@@ -680,7 +680,7 @@ pub fn convert(
                 bail!(tr!("conversion failed: {err}",
                     zh: "转换失败：{err}", tw: "轉換失敗：{err}",
                     es: "error en la conversión: {err}", fr: "échec de la conversion : {err}",
-                    ja: "変換に失敗しました: {err}", ko: "변환 실패: {err}"))
+                    ja: "変換に失敗しました: {err}", ko: "변환 실패: {err}", ru: "ошибка конвертации: {err}"))
             }
         }
     };

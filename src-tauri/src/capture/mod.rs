@@ -290,7 +290,7 @@ impl Recorder {
                 bail!(tr!("Nothing is buffered yet. Try again in a moment.",
                     zh: "还没有缓存内容，请稍后再试。", tw: "還沒有快取內容，請稍後再試。",
                     es: "Todavía no hay nada en el búfer. Inténtalo de nuevo en un momento.", fr: "Rien n'est encore en mémoire tampon. Réessayez dans un instant.",
-                    ja: "まだバッファーに何もありません。少ししてからもう一度お試しください。", ko: "아직 버퍼에 저장된 내용이 없습니다. 잠시 후 다시 시도하세요."));
+                    ja: "まだバッファーに何もありません。少ししてからもう一度お試しください。", ko: "아직 버퍼에 저장된 내용이 없습니다. 잠시 후 다시 시도하세요.", ru: "В буфере пока ничего нет. Попробуйте чуть позже."));
             }
             let n = s.ring.len();
             let mut picked: Vec<usize> = Vec::new();
@@ -305,7 +305,7 @@ impl Recorder {
                 bail!(tr!("That part is no longer buffered.",
                     zh: "那一段已不在缓存中。", tw: "那一段已不在快取中。",
                     es: "Esa parte ya no está en el búfer.", fr: "Ce passage n'est plus en mémoire tampon.",
-                    ja: "その部分はもうバッファーにありません。", ko: "그 부분은 더 이상 버퍼에 없습니다."));
+                    ja: "その部分はもうバッファーにありません。", ko: "그 부분은 더 이상 버퍼에 없습니다.", ru: "Этого фрагмента уже нет в буфере."));
             }
             let first = picked[0];
             let last = *picked.last().unwrap();
@@ -470,7 +470,7 @@ pub fn screenshot(target: &Target, output: &Path) -> Result<()> {
         bail!(tr!("screenshot failed: {err}",
             zh: "截图失败：{err}", tw: "截圖失敗：{err}",
             es: "no se pudo hacer la captura: {err}", fr: "échec de la capture d'écran : {err}",
-            ja: "スクリーンショットに失敗しました: {err}", ko: "스크린샷 실패: {err}"));
+            ja: "スクリーンショットに失敗しました: {err}", ko: "스크린샷 실패: {err}", ru: "не удалось сделать снимок экрана: {err}"));
     }
     Ok(())
 }

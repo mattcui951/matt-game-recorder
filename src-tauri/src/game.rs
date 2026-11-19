@@ -157,7 +157,7 @@ fn tick(core: &Arc<Core>, live: &LiveClient, active: &mut Option<MatchSession>, 
                                 s.message = Some(tr!("Could not start recording: {e:#}",
                                     zh: "无法开始录制：{e:#}", tw: "無法開始錄製：{e:#}",
                                     es: "No se pudo iniciar la grabación: {e:#}", fr: "Impossible de démarrer l'enregistrement : {e:#}",
-                                    ja: "録画を開始できませんでした: {e:#}", ko: "녹화를 시작할 수 없습니다: {e:#}"));
+                                    ja: "録画を開始できませんでした: {e:#}", ko: "녹화를 시작할 수 없습니다: {e:#}", ru: "Не удалось начать запись: {e:#}"));
                             });
                         }
                     }
@@ -179,10 +179,10 @@ fn tick(core: &Arc<Core>, live: &LiveClient, active: &mut Option<MatchSession>, 
                 core.notify(&tr!("Recording stopped",
                     zh: "录制已停止", tw: "錄製已停止",
                     es: "Grabación detenida", fr: "Enregistrement arrêté",
-                    ja: "録画が停止しました", ko: "녹화 중지됨"), &tr!("The capture stopped unexpectedly. What was recorded so far has been saved.",
+                    ja: "録画が停止しました", ko: "녹화 중지됨", ru: "Запись остановлена"), &tr!("The capture stopped unexpectedly. What was recorded so far has been saved.",
                     zh: "录制意外中断，已保存目前录到的内容。", tw: "錄製意外中斷，已儲存目前錄到的內容。",
                     es: "La captura se detuvo de forma inesperada. Lo grabado hasta ahora se ha guardado.", fr: "La capture s'est arrêtée de manière inattendue. Ce qui a été enregistré jusqu'ici est conservé.",
-                    ja: "キャプチャが予期せず停止しました。ここまでの録画は保存されています。", ko: "캡처가 예기치 않게 중지되었습니다. 지금까지 녹화한 내용은 저장되었습니다."));
+                    ja: "キャプチャが予期せず停止しました。ここまでの録画は保存されています。", ko: "캡처가 예기치 않게 중지되었습니다. 지금까지 녹화한 내용은 저장되었습니다.", ru: "Запись неожиданно прервалась. Всё записанное до этого момента сохранено."));
                 let m = active.take().unwrap();
                 finish_match(core, m);
                 return;
@@ -394,26 +394,26 @@ fn start_match(core: &Arc<Core>, settings: &Settings, pid: u32, game_pid: Option
         "match" => tr!("Recording the full match",
             zh: "正在录制整场对局", tw: "正在錄製整場對局",
             es: "Grabando la partida completa", fr: "Enregistrement de la partie complète",
-            ja: "試合全体を録画中", ko: "게임 전체 녹화 중"),
+            ja: "試合全体を録画中", ko: "게임 전체 녹화 중", ru: "Запись всего матча"),
         "session" => tr!("Recording the full session",
             zh: "正在录制整个会话", tw: "正在錄製整個時段",
             es: "Grabando la sesión completa", fr: "Enregistrement de la session complète",
-            ja: "セッション全体を録画中", ko: "세션 전체 녹화 중"),
+            ja: "セッション全体を録画中", ko: "세션 전체 녹화 중", ru: "Запись всей сессии"),
         "highlights" => tr!("Capturing highlights",
             zh: "正在捕捉高光", tw: "正在擷取精華",
             es: "Capturando momentos destacados", fr: "Capture des temps forts",
-            ja: "ハイライトをキャプチャ中", ko: "하이라이트 캡처 중"),
+            ja: "ハイライトをキャプチャ中", ko: "하이라이트 캡처 중", ru: "Запись лучших моментов"),
         _ => tr!("Ready for manual captures",
             zh: "可以手动捕捉", tw: "可以手動擷取",
             es: "Listo para capturas manuales", fr: "Prêt pour les captures manuelles",
-            ja: "手動キャプチャの準備完了", ko: "수동 캡처 준비됨"),
+            ja: "手動キャプチャの準備完了", ko: "수동 캡처 준비됨", ru: "Готово к ручной записи"),
     };
     if (session_mode && n.session_start) || (!session_mode && n.match_start) {
         let shown = crate::i18n::title(&title);
         core.notify(&tr!("{shown} started",
             zh: "{shown} 已开始", tw: "{shown} 已開始",
             es: "{shown} ha empezado", fr: "{shown} a commencé",
-            ja: "{shown} を開始しました", ko: "{shown} 시작됨"), &what);
+            ja: "{shown} を開始しました", ko: "{shown} 시작됨", ru: "{shown}: начало"), &what);
     }
     let discord = (settings.general.discord_presence && !settings.general.discord_app_id.is_empty())
         .then(|| crate::discord::Presence::start(&settings.general.discord_app_id, &what))
@@ -564,7 +564,7 @@ fn process_pending(core: &Core, m: &mut MatchSession, force: bool) {
                             core.notify(&tr!("{shown} saved",
                                 zh: "{shown} 已保存", tw: "{shown} 已儲存",
                                 es: "{shown} guardado", fr: "{shown} enregistré",
-                                ja: "{shown} を保存しました", ko: "{shown} 저장됨"), &crate::i18n::title(&m.session.title));
+                                ja: "{shown} を保存しました", ko: "{shown} 저장됨", ru: "{shown}: сохранено"), &crate::i18n::title(&m.session.title));
                         }
                         core.library_changed();
                     }
@@ -588,7 +588,7 @@ fn finish_match(core: &Arc<Core>, mut m: MatchSession) {
         s.message = Some(tr!("Saving {shown}...",
             zh: "正在保存 {shown}...", tw: "正在儲存 {shown}...",
             es: "Guardando {shown}...", fr: "Enregistrement de {shown}...",
-            ja: "{shown} を保存中...", ko: "{shown} 저장 중..."));
+            ja: "{shown} を保存中...", ko: "{shown} 저장 중...", ru: "Сохранение: {shown}..."));
     });
     if let Some((start, pin)) = m.bookmark.take() {
         end_manual_capture(&mut m, start, pin);
@@ -636,15 +636,15 @@ fn finish_match(core: &Arc<Core>, mut m: MatchSession) {
     if saved_any && settings.notifications.match_end {
         let kda = session.kda.as_ref().map(|k| format!("KDA {}/{}/{}", k.kills, k.deaths, k.assists)).unwrap_or_default();
         let res = match session.result.as_deref() {
-            Some("win") => tr!("Victory. ", zh: "胜利。", tw: "勝利。", es: "Victoria. ", fr: "Victoire. ", ja: "勝利。", ko: "승리. "),
-            Some("loss") => tr!("Defeat. ", zh: "失败。", tw: "失敗。", es: "Derrota. ", fr: "Défaite. ", ja: "敗北。", ko: "패배. "),
+            Some("win") => tr!("Victory. ", zh: "胜利。", tw: "勝利。", es: "Victoria. ", fr: "Victoire. ", ja: "勝利。", ko: "승리. ", ru: "Победа. "),
+            Some("loss") => tr!("Defeat. ", zh: "失败。", tw: "失敗。", es: "Derrota. ", fr: "Défaite. ", ja: "敗北。", ko: "패배. ", ru: "Поражение. "),
             _ => String::new(),
         };
         let shown = crate::i18n::title(&session.title);
         core.notify(&tr!("{shown} saved",
             zh: "{shown} 已保存", tw: "{shown} 已儲存",
             es: "{shown} guardado", fr: "{shown} enregistré",
-            ja: "{shown} を保存しました", ko: "{shown} 저장됨"), &format!("{res}{kda}"));
+            ja: "{shown} を保存しました", ko: "{shown} 저장됨", ru: "{shown}: сохранено"), &format!("{res}{kda}"));
     }
     set_status(core, |s| {
         *s = crate::core::Status { state: "idle".into(), events_status: "idle".into(), ..Default::default() };
@@ -686,10 +686,10 @@ fn handle_hotkey(core: &Arc<Core>, h: Hotkey, active: &mut Option<MatchSession>,
                     core.notify(&tr!("Manual capture started",
                         zh: "手动捕捉已开始", tw: "手動擷取已開始",
                         es: "Captura manual iniciada", fr: "Capture manuelle lancée",
-                        ja: "手動キャプチャを開始しました", ko: "수동 캡처 시작됨"), &tr!("Press the hotkey again to stop.",
+                        ja: "手動キャプチャを開始しました", ko: "수동 캡처 시작됨", ru: "Ручная запись начата"), &tr!("Press the hotkey again to stop.",
                         zh: "再按一次快捷键停止。", tw: "再按一次快速鍵停止。",
                         es: "Pulsa el atajo otra vez para detenerla.", fr: "Appuyez de nouveau sur le raccourci pour l'arrêter.",
-                        ja: "もう一度ホットキーを押すと停止します。", ko: "단축키를 한 번 더 누르면 중지됩니다."));
+                        ja: "もう一度ホットキーを押すと停止します。", ko: "단축키를 한 번 더 누르면 중지됩니다.", ru: "Нажмите горячую клавишу ещё раз, чтобы остановить."));
                 }
             }
             Some((start, pin)) => end_manual_capture(m, start, pin),
@@ -772,10 +772,10 @@ fn toggle_screen(core: &Arc<Core>, screen: &mut Option<ScreenSession>) {
                 core.notify(&tr!("Screen recording started",
                     zh: "屏幕录制已开始", tw: "螢幕錄製已開始",
                     es: "Grabación de pantalla iniciada", fr: "Enregistrement d'écran lancé",
-                    ja: "画面録画を開始しました", ko: "화면 녹화 시작됨"), &tr!("Press {key} to stop.",
+                    ja: "画面録画を開始しました", ko: "화면 녹화 시작됨", ru: "Запись экрана начата"), &tr!("Press {key} to stop.",
                     zh: "按 {key} 停止。", tw: "按 {key} 停止。",
                     es: "Pulsa {key} para detenerla.", fr: "Appuyez sur {key} pour l'arrêter.",
-                    ja: "{key} を押すと停止します。", ko: "{key}를 누르면 중지됩니다."));
+                    ja: "{key} を押すと停止します。", ko: "{key}를 누르면 중지됩니다.", ru: "Нажмите {key}, чтобы остановить."));
             }
         }
         Err(e) => {
@@ -783,10 +783,10 @@ fn toggle_screen(core: &Arc<Core>, screen: &mut Option<ScreenSession>) {
             core.notify(&tr!("Screen recorder",
                 zh: "屏幕录制", tw: "螢幕錄製",
                 es: "Grabadora de pantalla", fr: "Enregistreur d'écran",
-                ja: "画面録画", ko: "화면 녹화"), &tr!("Could not start: {e:#}",
+                ja: "画面録画", ko: "화면 녹화", ru: "Запись экрана"), &tr!("Could not start: {e:#}",
                 zh: "无法开始：{e:#}", tw: "無法開始：{e:#}",
                 es: "No se pudo iniciar: {e:#}", fr: "Impossible de démarrer : {e:#}",
-                ja: "開始できませんでした: {e:#}", ko: "시작할 수 없습니다: {e:#}"));
+                ja: "開始できませんでした: {e:#}", ko: "시작할 수 없습니다: {e:#}", ru: "Не удалось запустить: {e:#}"));
         }
     }
 }
@@ -804,7 +804,7 @@ fn finish_screen(core: &Arc<Core>, s: ScreenSession) {
                     core.notify(&tr!("Screen recording saved",
                         zh: "屏幕录制已保存", tw: "螢幕錄製已儲存",
                         es: "Grabación de pantalla guardada", fr: "Enregistrement d'écran enregistré",
-                        ja: "画面録画を保存しました", ko: "화면 녹화 저장됨"), &crate::i18n::title(&session.title));
+                        ja: "画面録画を保存しました", ko: "화면 녹화 저장됨", ru: "Запись экрана сохранена"), &crate::i18n::title(&session.title));
                 }
             }
         }

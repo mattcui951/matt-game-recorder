@@ -59,7 +59,7 @@ pub fn save_settings(core: Core_, settings: Settings) -> Res<()> {
         result.map_err(|err| tr!("Could not change the Windows startup entry: {err}",
             zh: "无法更改 Windows 开机启动项：{err}", tw: "無法變更 Windows 開機啟動項目：{err}",
             es: "No se pudo cambiar el inicio automático de Windows: {err}", fr: "Impossible de modifier le démarrage automatique de Windows : {err}",
-            ja: "Windows のスタートアップ設定を変更できませんでした: {err}", ko: "Windows 시작 프로그램 항목을 바꿀 수 없습니다: {err}"))?;
+            ja: "Windows のスタートアップ設定を変更できませんでした: {err}", ko: "Windows 시작 프로그램 항목을 바꿀 수 없습니다: {err}", ru: "Не удалось изменить автозапуск Windows: {err}"))?;
     }
     let storage_changed = serde_json::to_value(&core.settings().storage).ok() != serde_json::to_value(&settings.storage).ok();
     let language_changed = core.settings().general.language != settings.general.language;
@@ -129,7 +129,7 @@ pub fn rename_recording(core: Core_, id: String, title: String) -> Res<Recording
         return Err(tr!("Name cannot be empty",
             zh: "名称不能为空", tw: "名稱不能為空",
             es: "El nombre no puede estar vacío", fr: "Le nom ne peut pas être vide",
-            ja: "名前を空にはできません", ko: "이름은 비워 둘 수 없습니다"));
+            ja: "名前を空にはできません", ko: "이름은 비워 둘 수 없습니다", ru: "Название не может быть пустым"));
     }
     let r = core.library.update(&id, |r| r.title = title).map_err(e)?;
     core.library_changed();
@@ -284,7 +284,7 @@ pub fn supercut(core: Core_, id: String, kinds: Vec<String>, before: f64, after:
         return Err(tr!("No events of the selected types in this recording.",
             zh: "这段录像里没有所选类型的事件。", tw: "這段錄影裡沒有所選類型的事件。",
             es: "Esta grabación no tiene eventos de los tipos elegidos.", fr: "Aucun événement des types choisis dans cet enregistrement.",
-            ja: "この録画には選んだ種類のイベントがありません。", ko: "이 녹화에는 선택한 종류의 이벤트가 없습니다."));
+            ja: "この録画には選んだ種類のイベントがありません。", ko: "이 녹화에는 선택한 종류의 이벤트가 없습니다.", ru: "В этой записи нет событий выбранных типов."));
     }
     let session = core.library.session(&src.session_id).ok_or_else(crate::i18n::recording_not_found)?;
     let title = format!("{} supercut", src.title);
@@ -311,17 +311,17 @@ pub fn supercut_range(core: Core_, from: String, to: String, kinds: Vec<String>,
         return Err(tr!("No moments of the selected kinds in these dates.",
             zh: "这段日期里没有所选类型的时刻。", tw: "這段日期裡沒有所選類型的時刻。",
             es: "No hay momentos de los tipos elegidos en estas fechas.", fr: "Aucun moment des types choisis à ces dates.",
-            ja: "この期間には選んだ種類の瞬間がありません。", ko: "이 기간에는 선택한 종류의 순간이 없습니다."));
+            ja: "この期間には選んだ種類の瞬間がありません。", ko: "이 기간에는 선택한 종류의 순간이 없습니다.", ru: "За эти даты нет моментов выбранных типов."));
     }
     let session = core.library.editor_session("Supercuts").map_err(e)?;
     let (a, b) = (from.format("%Y-%m-%d").to_string(), to.format("%Y-%m-%d").to_string());
     let title = if from == to { tr!("Supercut {a}",
         zh: "集锦 {a}", tw: "集錦 {a}",
         es: "Resumen {a}", fr: "Compilation {a}",
-        ja: "スーパーカット {a}", ko: "슈퍼컷 {a}") } else { tr!("Supercut {a} to {b}",
+        ja: "スーパーカット {a}", ko: "슈퍼컷 {a}", ru: "Нарезка {a}") } else { tr!("Supercut {a} to {b}",
         zh: "集锦 {a} 至 {b}", tw: "集錦 {a} 至 {b}",
         es: "Resumen del {a} al {b}", fr: "Compilation du {a} au {b}",
-        ja: "スーパーカット {a}〜{b}", ko: "슈퍼컷 {a}~{b}") };
+        ja: "スーパーカット {a}〜{b}", ko: "슈퍼컷 {a}~{b}", ru: "Нарезка {a} – {b}") };
     Ok(render_supercut(core, parts, session, title, None))
 }
 
@@ -459,7 +459,7 @@ pub fn export_project(core: Core_, id: String, codec: String) -> Res<String> {
         return Err(tr!("Add at least one clip to the timeline first.",
             zh: "请先在时间轴上添加至少一个片段。", tw: "請先在時間軸上新增至少一個片段。",
             es: "Primero añade al menos un clip a la línea de tiempo.", fr: "Ajoutez d'abord au moins un clip à la chronologie.",
-            ja: "先にタイムラインにクリップを1つ以上追加してください。", ko: "먼저 타임라인에 클립을 하나 이상 추가하세요."));
+            ja: "先にタイムラインにクリップを1つ以上追加してください。", ko: "먼저 타임라인에 클립을 하나 이상 추가하세요.", ru: "Сначала добавьте на шкалу времени хотя бы один клип."));
     }
     let mut segments = Vec::new();
     let mut first_size = None;
@@ -467,7 +467,7 @@ pub fn export_project(core: Core_, id: String, codec: String) -> Res<String> {
         let r = core.library.recording(&c.recording_id).ok_or_else(|| tr!("A clip's source video was deleted.",
             zh: "某个片段的源视频已被删除。", tw: "某個片段的來源影片已被刪除。",
             es: "Se eliminó el vídeo de origen de un clip.", fr: "La vidéo source d'un clip a été supprimée.",
-            ja: "クリップの元のビデオが削除されています。", ko: "클립의 원본 동영상이 삭제되었습니다."))?;
+            ja: "クリップの元のビデオが削除されています。", ko: "클립의 원본 동영상이 삭제되었습니다.", ru: "Исходное видео одного из клипов удалено."))?;
         first_size.get_or_insert((r.width, r.height));
         segments.push(Segment { file: r.path(), start: c.start, end: c.end, volume: c.volume, crop: c.crop.clone() });
     }
@@ -539,7 +539,7 @@ pub fn change_media_folder(core: Core_, path: String, move_media: bool) -> Res<S
         return Err(tr!("Wait until the current recording finishes.",
             zh: "请等当前录制结束。", tw: "請等目前的錄製結束。",
             es: "Espera a que termine la grabación actual.", fr: "Attendez la fin de l'enregistrement en cours.",
-            ja: "現在の録画が終わるまでお待ちください。", ko: "현재 녹화가 끝날 때까지 기다리세요."));
+            ja: "現在の録画が終わるまでお待ちください。", ko: "현재 녹화가 끝날 때까지 기다리세요.", ru: "Дождитесь окончания текущей записи."));
     }
     let core = core.inner().clone();
     let new_root = PathBuf::from(&path);
@@ -547,7 +547,7 @@ pub fn change_media_folder(core: Core_, path: String, move_media: bool) -> Res<S
     Ok(core.clone().jobs.spawn(&app.clone(), "move", &tr!("Moving media folder",
         zh: "正在移动媒体文件夹", tw: "正在移動媒體資料夾",
         es: "Moviendo la carpeta multimedia", fr: "Déplacement du dossier multimédia",
-        ja: "メディアフォルダーを移動中", ko: "미디어 폴더 옮기는 중"), move |ctx| {
+        ja: "メディアフォルダーを移動中", ko: "미디어 폴더 옮기는 중", ru: "Перенос папки с медиафайлами"), move |ctx| {
         let old_root = core.library.root();
         if move_media && old_root.exists() && old_root != new_root {
             let total = tree_size(&old_root);
@@ -571,7 +571,7 @@ pub fn create_backup(core: Core_, dest: String) -> Res<String> {
     Ok(core.clone().jobs.spawn(&app.clone(), "backup", &tr!("Backing up media",
         zh: "正在备份媒体", tw: "正在備份媒體",
         es: "Haciendo copia de seguridad", fr: "Sauvegarde des fichiers",
-        ja: "メディアをバックアップ中", ko: "미디어 백업 중"), move |ctx| {
+        ja: "メディアをバックアップ中", ko: "미디어 백업 중", ru: "Резервное копирование"), move |ctx| {
         let root = core.library.root();
         let target = PathBuf::from(dest).join(format!("Matt Game Recorder backup {}", chrono::Local::now().format("%Y-%m-%d %H-%M")));
         let total = tree_size(&root);
@@ -638,7 +638,7 @@ fn theme_file_path(path: &str) -> Res<PathBuf> {
         return Err(tr!("Theme files are .json files.",
             zh: "主题文件是 .json 文件。", tw: "主題檔案是 .json 檔案。",
             es: "Los archivos de tema son archivos .json.", fr: "Les fichiers de thème sont des fichiers .json.",
-            ja: "テーマファイルは .json ファイルです。", ko: "테마 파일은 .json 파일입니다."));
+            ja: "テーマファイルは .json ファイルです。", ko: "테마 파일은 .json 파일입니다.", ru: "Файлы тем имеют формат .json."));
     }
     Ok(p)
 }
@@ -651,7 +651,7 @@ pub fn read_theme_file(path: String) -> Res<String> {
         return Err(tr!("That file is too large to be a theme.",
             zh: "这个文件太大，不是主题文件。", tw: "這個檔案太大，不是主題檔案。",
             es: "Ese archivo es demasiado grande para ser un tema.", fr: "Ce fichier est trop gros pour être un thème.",
-            ja: "このファイルはテーマにしては大きすぎます。", ko: "이 파일은 테마라기엔 너무 큽니다."));
+            ja: "このファイルはテーマにしては大きすぎます。", ko: "이 파일은 테마라기엔 너무 큽니다.", ru: "Этот файл слишком большой для темы."));
     }
     std::fs::read_to_string(&p).map_err(e)
 }
@@ -664,7 +664,7 @@ pub fn write_theme_file(path: String, contents: String) -> Res<()> {
         return Err(tr!("Theme is too large.",
             zh: "主题太大。", tw: "主題太大。",
             es: "El tema es demasiado grande.", fr: "Le thème est trop gros.",
-            ja: "テーマが大きすぎます。", ko: "테마가 너무 큽니다."));
+            ja: "テーマが大きすぎます。", ko: "테마가 너무 큽니다.", ru: "Тема слишком большая."));
     }
     std::fs::write(p, contents).map_err(e)
 }
@@ -728,6 +728,6 @@ pub fn pause_job(core: Core_, id: String, paused: bool) -> Res<()> {
         None => Err(tr!("This job cannot be paused.",
             zh: "此任务无法暂停。", tw: "此工作無法暫停。",
             es: "Esta tarea no se puede pausar.", fr: "Cette tâche ne peut pas être mise en pause.",
-            ja: "この処理は一時停止できません。", ko: "이 작업은 일시 중지할 수 없습니다.")),
+            ja: "この処理は一時停止できません。", ko: "이 작업은 일시 중지할 수 없습니다.", ru: "Эту задачу нельзя приостановить.")),
     }
 }

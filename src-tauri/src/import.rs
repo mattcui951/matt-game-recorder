@@ -712,7 +712,7 @@ fn wait_while_recording(core: &Core, ctx: &JobCtx, msg: &str, progress: f64) -> 
             ctx.update(progress, &tr!("Paused while you play. {msg}",
                 zh: "游戏中已暂停。{msg}", tw: "遊戲中已暫停。{msg}",
                 es: "En pausa mientras juegas. {msg}", fr: "En pause pendant que vous jouez. {msg}",
-                ja: "プレイ中のため一時停止中。{msg}", ko: "플레이 중이라 일시 중지됨. {msg}"));
+                ja: "プレイ中のため一時停止中。{msg}", ko: "플레이 중이라 일시 중지됨. {msg}", ru: "Пауза, пока вы играете. {msg}"));
             told = true;
         }
         std::thread::sleep(Duration::from_secs(5));
@@ -784,17 +784,17 @@ impl Run<'_> {
             [a, b] => tr!("Videos {a} and {b} of {of}, one on the CPU",
                 zh: "第 {a} 和第 {b} 个视频，共 {of} 个（其中一个用 CPU）", tw: "第 {a} 和第 {b} 個影片，共 {of} 個（其中一個用 CPU）",
                 es: "Vídeos {a} y {b} de {of}, uno en la CPU", fr: "Vidéos {a} et {b} sur {of}, dont une sur le processeur",
-                ja: "{of} 本中 {a} 本目と {b} 本目（1 本は CPU）", ko: "동영상 {a}, {b} / {of}(하나는 CPU)"),
+                ja: "{of} 本中 {a} 本目と {b} 本目（1 本は CPU）", ko: "동영상 {a}, {b} / {of}(하나는 CPU)", ru: "Видео {a} и {b} из {of}, одно на процессоре"),
             [a] => tr!("Video {a} of {of}",
                 zh: "第 {a} 个视频，共 {of} 个", tw: "第 {a} 個影片，共 {of} 個",
                 es: "Vídeo {a} de {of}", fr: "Vidéo {a} sur {of}",
-                ja: "{of} 本中 {a} 本目", ko: "동영상 {a} / {of}"),
+                ja: "{of} 本中 {a} 本目", ko: "동영상 {a} / {of}", ru: "Видео {a} из {of}"),
             _ => {
                 let a = (self.skipped + s.imported + s.failed + 1).min(of);
                 tr!("Video {a} of {of}",
                     zh: "第 {a} 个视频，共 {of} 个", tw: "第 {a} 個影片，共 {of} 個",
                     es: "Vídeo {a} de {of}", fr: "Vidéo {a} sur {of}",
-                    ja: "{of} 本中 {a} 本目", ko: "동영상 {a} / {of}")
+                    ja: "{of} 本中 {a} 本目", ko: "동영상 {a} / {of}", ru: "Видео {a} из {of}")
             }
         }
     }
@@ -886,7 +886,7 @@ impl Run<'_> {
                 bail!(tr!("Not enough free space on the media drive to continue ({n} imported so far).",
                     zh: "媒体所在磁盘空间不足，无法继续（已导入 {n} 个）。", tw: "媒體所在磁碟空間不足，無法繼續（已匯入 {n} 個）。",
                     es: "No hay espacio libre suficiente en la unidad multimedia para seguir ({n} importados hasta ahora).", fr: "Pas assez d'espace libre sur le disque multimédia pour continuer ({n} importés jusqu'ici).",
-                    ja: "メディアのドライブの空きが足りないため続行できません（ここまでに {n} 本インポート済み）。", ko: "미디어 드라이브에 여유 공간이 부족해 계속할 수 없습니다(지금까지 {n}개 가져옴)."));
+                    ja: "メディアのドライブの空きが足りないため続行できません（ここまでに {n} 本インポート済み）。", ko: "미디어 드라이브에 여유 공간이 부족해 계속할 수 없습니다(지금까지 {n}개 가져옴).", ru: "На диске с медиафайлами недостаточно места, чтобы продолжить (уже импортировано: {n})."));
             }
         }
 
@@ -950,7 +950,7 @@ impl Run<'_> {
                     std::fs::rename(&tmp, &out).context(tr!("could not finalize the converted video",
                         zh: "无法完成转换后的视频", tw: "無法完成轉換後的影片",
                         es: "no se pudo terminar el vídeo convertido", fr: "impossible de finaliser la vidéo convertie",
-                        ja: "変換したビデオを仕上げられませんでした", ko: "변환한 동영상을 마무리할 수 없습니다"))?;
+                        ja: "変換したビデオを仕上げられませんでした", ko: "변환한 동영상을 마무리할 수 없습니다", ru: "не удалось завершить конвертированное видео"))?;
                     let mut r = core.library.add_file(&session, &item.kind, &title, &out, item.events.clone(), vec![], None)?;
                     r.imported_from = Some(item.src.to_string_lossy().into_owned());
                     r.source_fingerprint = Some(item.fp.clone());
@@ -1101,12 +1101,12 @@ pub fn start(core: &Arc<Core>, kind: &str, folder: PathBuf, paused: bool, opts: 
         ("library", tr!("Importing recordings",
             zh: "正在导入录像", tw: "正在匯入錄影",
             es: "Importando grabaciones", fr: "Importation des enregistrements",
-            ja: "録画をインポート中", ko: "녹화 가져오는 중"), false)
+            ja: "録画をインポート中", ko: "녹화 가져오는 중", ru: "Импорт записей"), false)
     } else {
         ("outplayed", tr!("Importing from Outplayed",
             zh: "正在从 Outplayed 导入", tw: "正在從 Outplayed 匯入",
             es: "Importando desde Outplayed", fr: "Importation depuis Outplayed",
-            ja: "Outplayed からインポート中", ko: "Outplayed에서 가져오는 중"), true)
+            ja: "Outplayed からインポート中", ko: "Outplayed에서 가져오는 중", ru: "Импорт из Outplayed"), true)
     };
     core.jobs.spawn_with(&core.app, "import", tag, &title, true, paused, move |ctx| {
         if outplayed {
@@ -1159,18 +1159,18 @@ pub fn import_outplayed(core: &Arc<Core>, folder: &Path, ctx: &JobCtx, opts: Opt
 fn skip_note(duplicates: usize, deleted: usize) -> String {
     // Counts as words in the languages that inflect them ("1 duplicate", "2 duplicates").
     let dups = match duplicates {
-        1 => tr!("1 duplicate", zh: "1 个重复视频", tw: "1 個重複影片", es: "1 duplicado", fr: "1 doublon", ja: "重複 1 本", ko: "중복 1개"),
-        d => tr!("{d} duplicates", zh: "{d} 个重复视频", tw: "{d} 個重複影片", es: "{d} duplicados", fr: "{d} doublons", ja: "重複 {d} 本", ko: "중복 {d}개"),
+        1 => tr!("1 duplicate", zh: "1 个重复视频", tw: "1 個重複影片", es: "1 duplicado", fr: "1 doublon", ja: "重複 1 本", ko: "중복 1개", ru: "дубликаты: 1"),
+        d => tr!("{d} duplicates", zh: "{d} 个重复视频", tw: "{d} 個重複影片", es: "{d} duplicados", fr: "{d} doublons", ja: "重複 {d} 本", ko: "중복 {d}개", ru: "дубликаты: {d}"),
     };
     let gone = match deleted {
-        1 => tr!("1 video you deleted earlier", zh: "1 个你之前删除的视频", tw: "1 個你之前刪除的影片", es: "1 vídeo que eliminaste antes", fr: "1 vidéo supprimée auparavant", ja: "以前に削除したビデオ 1 本", ko: "이전에 삭제한 동영상 1개"),
-        x => tr!("{x} videos you deleted earlier", zh: "{x} 个你之前删除的视频", tw: "{x} 個你之前刪除的影片", es: "{x} vídeos que eliminaste antes", fr: "{x} vidéos supprimées auparavant", ja: "以前に削除したビデオ {x} 本", ko: "이전에 삭제한 동영상 {x}개"),
+        1 => tr!("1 video you deleted earlier", zh: "1 个你之前删除的视频", tw: "1 個你之前刪除的影片", es: "1 vídeo que eliminaste antes", fr: "1 vidéo supprimée auparavant", ja: "以前に削除したビデオ 1 本", ko: "이전에 삭제한 동영상 1개", ru: "удалённые ранее видео: 1"),
+        x => tr!("{x} videos you deleted earlier", zh: "{x} 个你之前删除的视频", tw: "{x} 個你之前刪除的影片", es: "{x} vídeos que eliminaste antes", fr: "{x} vidéos supprimées auparavant", ja: "以前に削除したビデオ {x} 本", ko: "이전에 삭제한 동영상 {x}개", ru: "удалённые ранее видео: {x}"),
     };
     match (duplicates, deleted) {
         (0, 0) => String::new(),
-        (_, 0) => tr!(" Skipped {dups}.", zh: "已跳过 {dups}。", tw: "已略過 {dups}。", es: " Omitidos: {dups}.", fr: " Ignorés : {dups}.", ja: "{dups}をスキップしました。", ko: " {dups}를 건너뛰었습니다."),
-        (0, _) => tr!(" Skipped {gone}.", zh: "已跳过 {gone}。", tw: "已略過 {gone}。", es: " Omitidos: {gone}.", fr: " Ignorées : {gone}.", ja: "{gone}をスキップしました。", ko: " {gone}를 건너뛰었습니다."),
-        _ => tr!(" Skipped {dups} and {gone}.", zh: "已跳过 {dups}和 {gone}。", tw: "已略過 {dups}和 {gone}。", es: " Omitidos: {dups} y {gone}.", fr: " Ignorés : {dups} et {gone}.", ja: "{dups}と{gone}をスキップしました。", ko: " {dups}와 {gone}를 건너뛰었습니다."),
+        (_, 0) => tr!(" Skipped {dups}.", zh: "已跳过 {dups}。", tw: "已略過 {dups}。", es: " Omitidos: {dups}.", fr: " Ignorés : {dups}.", ja: "{dups}をスキップしました。", ko: " {dups}를 건너뛰었습니다.", ru: " Пропущены {dups}."),
+        (0, _) => tr!(" Skipped {gone}.", zh: "已跳过 {gone}。", tw: "已略過 {gone}。", es: " Omitidos: {gone}.", fr: " Ignorées : {gone}.", ja: "{gone}をスキップしました。", ko: " {gone}를 건너뛰었습니다.", ru: " Пропущены {gone}."),
+        _ => tr!(" Skipped {dups} and {gone}.", zh: "已跳过 {dups}和 {gone}。", tw: "已略過 {dups}和 {gone}。", es: " Omitidos: {dups} y {gone}.", fr: " Ignorés : {dups} et {gone}.", ja: "{dups}と{gone}をスキップしました。", ko: " {dups}와 {gone}를 건너뛰었습니다.", ru: " Пропущены {dups} и {gone}."),
     }
 }
 
@@ -1186,7 +1186,7 @@ fn backfill_ledger(core: &Core, ctx: &JobCtx) {
         ctx.update(0.0, &tr!("Updating the import history ({i} of {n})",
             zh: "正在更新导入记录（{i}/{n}）", tw: "正在更新匯入記錄（{i}/{n}）",
             es: "Actualizando el historial de importación ({i} de {n})", fr: "Mise à jour de l'historique d'importation ({i} sur {n})",
-            ja: "インポート履歴を更新中（{i}/{n}）", ko: "가져오기 기록 업데이트 중({i}/{n})"));
+            ja: "インポート履歴を更新中（{i}/{n}）", ko: "가져오기 기록 업데이트 중({i}/{n})", ru: "Обновление истории импорта ({i} из {n})"));
         let Some(src) = r.imported_from.clone().map(PathBuf::from) else { continue };
         if let Ok(fp) = crate::ledger::fingerprint(&src) {
             crate::ledger::record_if_missing(&fp, &src, &r.id);
@@ -1203,12 +1203,12 @@ fn import_outplayed_inner(core: &Arc<Core>, folder: &Path, ctx: &JobCtx, include
         bail!(tr!("Folder not found: {f}",
             zh: "找不到文件夹：{f}", tw: "找不到資料夾：{f}",
             es: "No se encontró la carpeta: {f}", fr: "Dossier introuvable : {f}",
-            ja: "フォルダーが見つかりません: {f}", ko: "폴더를 찾을 수 없습니다: {f}"));
+            ja: "フォルダーが見つかりません: {f}", ko: "폴더를 찾을 수 없습니다: {f}", ru: "Папка не найдена: {f}"));
     }
     ctx.update(0.0, &tr!("Reading the Outplayed library...",
         zh: "正在读取 Outplayed 资料库...", tw: "正在讀取 Outplayed 媒體庫...",
         es: "Leyendo la biblioteca de Outplayed...", fr: "Lecture de la bibliothèque Outplayed...",
-        ja: "Outplayed のライブラリを読み込み中...", ko: "Outplayed 라이브러리 읽는 중..."));
+        ja: "Outplayed のライブラリを読み込み中...", ko: "Outplayed 라이브러리 읽는 중...", ru: "Чтение библиотеки Outplayed..."));
     let matches = read_outplayed();
     let mut media_of: HashMap<String, (&OpMatch, &OpMedia)> = HashMap::new();
     for m in &matches {
@@ -1234,7 +1234,7 @@ fn import_outplayed_inner(core: &Arc<Core>, folder: &Path, ctx: &JobCtx, include
             ctx.update(0.0, &tr!("Checking for duplicates ({i} of {n_files})",
                 zh: "正在检查重复（{i}/{n_files}）", tw: "正在檢查重複（{i}/{n_files}）",
                 es: "Buscando duplicados ({i} de {n_files})", fr: "Recherche des doublons ({i} sur {n_files})",
-                ja: "重複を確認中（{i}/{n_files}）", ko: "중복 확인 중({i}/{n_files})"));
+                ja: "重複を確認中（{i}/{n_files}）", ko: "중복 확인 중({i}/{n_files})", ru: "Поиск дубликатов ({i} из {n_files})"));
         }
         let key = src.to_string_lossy().to_lowercase();
         let size = src.metadata().map(|m| m.len()).unwrap_or(0);
@@ -1301,7 +1301,7 @@ fn import_outplayed_inner(core: &Arc<Core>, folder: &Path, ctx: &JobCtx, include
         ctx.update(1.0, &tr!("Everything is already imported.{skipped_note}",
             zh: "所有内容都已导入。{skipped_note}", tw: "所有內容都已匯入。{skipped_note}",
             es: "Ya está todo importado.{skipped_note}", fr: "Tout est déjà importé.{skipped_note}",
-            ja: "すべてインポート済みです。{skipped_note}", ko: "모두 이미 가져왔습니다.{skipped_note}"));
+            ja: "すべてインポート済みです。{skipped_note}", ko: "모두 이미 가져왔습니다.{skipped_note}", ru: "Всё уже импортировано.{skipped_note}"));
         return Ok(None);
     }
     // Oldest first, so match numbers per day come out in play order.
@@ -1342,18 +1342,18 @@ fn import_outplayed_inner(core: &Arc<Core>, folder: &Path, ctx: &JobCtx, include
         tr!("Imported 1 video.",
             zh: "已导入 1 个视频。", tw: "已匯入 1 個影片。",
             es: "Se importó 1 vídeo.", fr: "1 vidéo importée.",
-            ja: "1 本のビデオをインポートしました。", ko: "동영상 1개를 가져왔습니다.")
+            ja: "1 本のビデオをインポートしました。", ko: "동영상 1개를 가져왔습니다.", ru: "Импортировано 1 видео.")
     } else {
         tr!("Imported {imported} videos.",
             zh: "已导入 {imported} 个视频。", tw: "已匯入 {imported} 個影片。",
             es: "Se importaron {imported} vídeos.", fr: "{imported} vidéos importées.",
-            ja: "{imported} 本のビデオをインポートしました。", ko: "동영상 {imported}개를 가져왔습니다.")
+            ja: "{imported} 本のビデオをインポートしました。", ko: "동영상 {imported}개를 가져왔습니다.", ru: "Импортировано видео: {imported}.")
     };
     let failed_note = if failed > 0 {
         tr!(" {failed} could not be converted (see app.log).",
             zh: "{failed} 个无法转换（见 app.log）。", tw: "{failed} 個無法轉換（見 app.log）。",
             es: " {failed} no se pudieron convertir (consulta app.log).", fr: " {failed} n'ont pas pu être converties (voir app.log).",
-            ja: "{failed} 本は変換できませんでした（app.log を参照）。", ko: " {failed}개는 변환하지 못했습니다(app.log 참고).")
+            ja: "{failed} 本は変換できませんでした（app.log を参照）。", ko: " {failed}개는 변환하지 못했습니다(app.log 참고).", ru: " Не удалось конвертировать: {failed} (см. app.log).")
     } else {
         String::new()
     };
@@ -1394,7 +1394,7 @@ fn our_media_fingerprints(core: &Core, ctx: &JobCtx) -> HashSet<String> {
                 ctx.update(0.0, &tr!("Checking your library for duplicates ({i} of {n})",
                     zh: "正在检查资料库中的重复（{i}/{n}）", tw: "正在檢查媒體庫中的重複（{i}/{n}）",
                     es: "Buscando duplicados en tu biblioteca ({i} de {n})", fr: "Recherche des doublons dans votre bibliothèque ({i} sur {n})",
-                    ja: "ライブラリ内の重複を確認中（{i}/{n}）", ko: "라이브러리에서 중복 확인 중({i}/{n})"));
+                    ja: "ライブラリ内の重複を確認中（{i}/{n}）", ko: "라이브러리에서 중복 확인 중({i}/{n})", ru: "Поиск дубликатов в библиотеке ({i} из {n})"));
             }
             crate::ledger::fingerprint(&r.path()).ok()
         })
@@ -1410,15 +1410,15 @@ fn import_library_inner(core: &Arc<Core>, folder: &Path, ctx: &JobCtx) -> Result
         bail!(tr!("Folder not found: {f}",
             zh: "找不到文件夹：{f}", tw: "找不到資料夾：{f}",
             es: "No se encontró la carpeta: {f}", fr: "Dossier introuvable : {f}",
-            ja: "フォルダーが見つかりません: {f}", ko: "폴더를 찾을 수 없습니다: {f}"));
+            ja: "フォルダーが見つかりません: {f}", ko: "폴더를 찾을 수 없습니다: {f}", ru: "Папка не найдена: {f}"));
     }
     if folder.canonicalize().ok() == root.canonicalize().ok() {
         bail!(tr!("That is this app's own media folder.",
             zh: "这是本应用自己的媒体文件夹。", tw: "這是本應用程式自己的媒體資料夾。",
             es: "Esa es la carpeta multimedia de esta misma app.", fr: "C'est le dossier multimédia de l'app elle-même.",
-            ja: "これはこのアプリ自身のメディアフォルダーです。", ko: "이 앱의 미디어 폴더입니다."));
+            ja: "これはこのアプリ自身のメディアフォルダーです。", ko: "이 앱의 미디어 폴더입니다.", ru: "Это папка медиафайлов самого приложения."));
     }
-    ctx.update(0.0, &tr!("Scanning...", zh: "正在扫描...", tw: "正在掃描...", es: "Analizando...", fr: "Analyse...", ja: "スキャン中...", ko: "검색 중..."));
+    ctx.update(0.0, &tr!("Scanning...", zh: "正在扫描...", tw: "正在掃描...", es: "Analizando...", fr: "Analyse...", ja: "スキャン中...", ko: "검색 중...", ru: "Сканирование..."));
     // Find session folders.
     let mut session_dirs = Vec::new();
     let mut stack = vec![(folder.to_path_buf(), 0)];
@@ -1439,7 +1439,7 @@ fn import_library_inner(core: &Arc<Core>, folder: &Path, ctx: &JobCtx) -> Result
         bail!(tr!("No Matt Game Recorder recordings found in {f}.",
             zh: "在 {f} 中没有找到 Matt Game Recorder 录像。", tw: "在 {f} 中沒有找到 Matt Game Recorder 錄影。",
             es: "No se encontraron grabaciones de Matt Game Recorder en {f}.", fr: "Aucun enregistrement Matt Game Recorder trouvé dans {f}.",
-            ja: "{f} に Matt Game Recorder の録画が見つかりません。", ko: "{f}에서 Matt Game Recorder 녹화를 찾지 못했습니다."));
+            ja: "{f} に Matt Game Recorder の録画が見つかりません。", ko: "{f}에서 Matt Game Recorder 녹화를 찾지 못했습니다.", ru: "В {f} нет записей Matt Game Recorder."));
     }
 
     struct Copy {
@@ -1477,7 +1477,7 @@ fn import_library_inner(core: &Arc<Core>, folder: &Path, ctx: &JobCtx) -> Result
             ctx.update(0.0, &tr!("Checking for duplicates: {shown}",
                 zh: "正在检查重复：{shown}", tw: "正在檢查重複：{shown}",
                 es: "Buscando duplicados: {shown}", fr: "Recherche des doublons : {shown}",
-                ja: "重複を確認中: {shown}", ko: "중복 확인 중: {shown}"));
+                ja: "重複を確認中: {shown}", ko: "중복 확인 중: {shown}", ru: "Поиск дубликатов: {shown}"));
             let Ok(media_fp) = crate::ledger::fingerprint(&dir.join(&rec.file)) else { continue };
             let ours = ours_media.get_or_insert_with(|| our_media_fingerprints(core, ctx));
             if !seen.insert(media_fp.clone()) || crate::ledger::source(&media_fp).is_some() || ours.contains(&media_fp) {
@@ -1499,7 +1499,7 @@ fn import_library_inner(core: &Arc<Core>, folder: &Path, ctx: &JobCtx) -> Result
         ctx.update(1.0, &tr!("Everything is already imported.{skipped_note}",
             zh: "所有内容都已导入。{skipped_note}", tw: "所有內容都已匯入。{skipped_note}",
             es: "Ya está todo importado.{skipped_note}", fr: "Tout est déjà importé.{skipped_note}",
-            ja: "すべてインポート済みです。{skipped_note}", ko: "모두 이미 가져왔습니다.{skipped_note}"));
+            ja: "すべてインポート済みです。{skipped_note}", ko: "모두 이미 가져왔습니다.{skipped_note}", ru: "Всё уже импортировано.{skipped_note}"));
         return Ok(None);
     }
     let total = total.max(1);
@@ -1541,12 +1541,12 @@ fn import_library_inner(core: &Arc<Core>, folder: &Path, ctx: &JobCtx) -> Result
                     ctx.update(done as f64 / total as f64, &tr!("{imported} of {count} moved",
                         zh: "已移动 {imported}/{count}", tw: "已移動 {imported}/{count}",
                         es: "{imported} de {count} movidas", fr: "{imported} sur {count} déplacés",
-                        ja: "{count} 件中 {imported} 件を移動", ko: "{count}개 중 {imported}개 옮김"));
+                        ja: "{count} 件中 {imported} 件を移動", ko: "{count}개 중 {imported}개 옮김", ru: "Перемещено {imported} из {count}"));
                 } else {
                     ctx.update(done as f64 / total as f64, &tr!("{imported} of {count} copied",
                         zh: "已复制 {imported}/{count}", tw: "已複製 {imported}/{count}",
                         es: "{imported} de {count} copiadas", fr: "{imported} sur {count} copiés",
-                        ja: "{count} 件中 {imported} 件をコピー", ko: "{count}개 중 {imported}개 복사함"));
+                        ja: "{count} 件中 {imported} 件をコピー", ko: "{count}개 중 {imported}개 복사함", ru: "Скопировано {imported} из {count}"));
                 }
             }
             // A moved recording leaves the other folder entirely (its sidecar goes too).
@@ -1578,12 +1578,12 @@ fn import_library_inner(core: &Arc<Core>, folder: &Path, ctx: &JobCtx) -> Result
         tr!("Imported 1 recording.",
             zh: "已导入 1 个录像。", tw: "已匯入 1 個錄影。",
             es: "Se importó 1 grabación.", fr: "1 enregistrement importé.",
-            ja: "1 件の録画をインポートしました。", ko: "녹화 1개를 가져왔습니다.")
+            ja: "1 件の録画をインポートしました。", ko: "녹화 1개를 가져왔습니다.", ru: "Импортирована 1 запись.")
     } else {
         tr!("Imported {imported} recordings.",
             zh: "已导入 {imported} 个录像。", tw: "已匯入 {imported} 個錄影。",
             es: "Se importaron {imported} grabaciones.", fr: "{imported} enregistrements importés.",
-            ja: "{imported} 件の録画をインポートしました。", ko: "녹화 {imported}개를 가져왔습니다.")
+            ja: "{imported} 件の録画をインポートしました。", ko: "녹화 {imported}개를 가져왔습니다.", ru: "Импортировано записей: {imported}.")
     };
     ctx.update(1.0, &format!("{done}{skipped_note}"));
     Ok(None)

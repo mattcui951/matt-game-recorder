@@ -8,10 +8,11 @@ import { es } from './locales/es';
 import { fr } from './locales/fr';
 import { ja } from './locales/ja';
 import { ko } from './locales/ko';
+import { ru } from './locales/ru';
 import { zhCN } from './locales/zh-CN';
 import { zhTW } from './locales/zh-TW';
 
-export type Locale = 'en' | 'zh-CN' | 'zh-TW' | 'es' | 'fr' | 'ja' | 'ko';
+export type Locale = 'en' | 'zh-CN' | 'zh-TW' | 'es' | 'fr' | 'ja' | 'ko' | 'ru';
 export type LanguageSetting = 'system' | Locale;
 
 /** `label` is the native name, shown as-is in every language; `lang` goes on <html lang>. */
@@ -23,6 +24,7 @@ const LOCALES: Record<Locale, { label: string; lang: string; intl: string; messa
   fr: { label: 'Français', lang: 'fr', intl: 'fr-FR', messages: fr },
   ja: { label: '日本語', lang: 'ja', intl: 'ja-JP', messages: ja },
   ko: { label: '한국어', lang: 'ko', intl: 'ko-KR', messages: ko },
+  ru: { label: 'Русский', lang: 'ru', intl: 'ru-RU', messages: ru },
 };
 const CACHE_KEY = 'mgr.locale';
 

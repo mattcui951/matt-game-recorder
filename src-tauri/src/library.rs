@@ -827,7 +827,7 @@ impl Library {
             bail!(tr!("This video is used by a protected editor project. Turn off \"Protect project videos\" in that project to delete it.",
                 zh: "这个视频被一个受保护的剪辑项目使用。要删除它，请先在该项目中关闭“保护项目视频”。", tw: "這個影片被一個受保護的編輯專案使用。要刪除它，請先在該專案中關閉「保護專案影片」。",
                 es: "Este vídeo lo usa un proyecto protegido del editor. Desactiva \"Proteger los vídeos del proyecto\" en ese proyecto para eliminarlo.", fr: "Cette vidéo est utilisée par un projet protégé de l'éditeur. Désactivez « Protéger les vidéos du projet » dans ce projet pour la supprimer.",
-                ja: "このビデオは保護されたエディタープロジェクトで使われています。削除するには、そのプロジェクトで「プロジェクトのビデオを保護」をオフにしてください。", ko: "이 동영상은 보호된 편집기 프로젝트에서 사용 중입니다. 삭제하려면 그 프로젝트에서 \"프로젝트 동영상 보호\"를 끄세요."));
+                ja: "このビデオは保護されたエディタープロジェクトで使われています。削除するには、そのプロジェクトで「プロジェクトのビデオを保護」をオフにしてください。", ko: "이 동영상은 보호된 편집기 프로젝트에서 사용 중입니다. 삭제하려면 그 프로젝트에서 \"프로젝트 동영상 보호\"를 끄세요.", ru: "Это видео используется в защищённом проекте редактора. Чтобы удалить его, отключите «Защитить видео проекта» в этом проекте."));
         }
         Ok(())
     }
