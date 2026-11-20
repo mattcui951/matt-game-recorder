@@ -667,7 +667,7 @@ pub fn scan_outplayed(core: &Core, folder: Option<&str>) -> OutplayedScan {
         v.exists().then_some(v)
     });
     let root = core.library.root();
-    let free_bytes = crate::win::disk_space(&root).map_or(0, |(free, _)| free);
+    let free_bytes = crate::platform::disk_space(&root).map_or(0, |(free, _)| free);
     // Debug builds: pretend the drive is this full (GB free), to test the low-space flow.
     #[cfg(debug_assertions)]
     let free_bytes = std::env::var("MGR_FAKE_FREE_GB").ok().and_then(|v| v.parse::<u64>().ok()).map_or(free_bytes, |gb| gb << 30);
@@ -697,7 +697,7 @@ pub fn scan_outplayed(core: &Core, folder: Option<&str>) -> OutplayedScan {
         already_imported: already,
         deleted_after_import: deleted,
         free_bytes,
-        same_drive: crate::win::same_volume(&folder, &root),
+        same_drive: crate::platform::same_volume(&folder, &root),
     }
 }
 
@@ -880,7 +880,7 @@ impl Run<'_> {
         if ctx.cancelled() {
             bail!("cancelled");
         }
-        if let Some((free, _)) = crate::win::disk_space(&core.library.root()) {
+        if let Some((free, _)) = crate::platform::disk_space(&core.library.root()) {
             if free < item.size + 2 * 1024 * 1024 * 1024 {
                 let n = self.state.lock().imported;
                 bail!(tr!("Not enough free space on the media drive to continue ({n} imported so far).",
@@ -1507,7 +1507,7 @@ fn import_library_inner(core: &Arc<Core>, folder: &Path, ctx: &JobCtx) -> Result
     let mut done = 0u64;
     let mut imported = 0usize;
     // On the same drive the files move (a rename: instant, no extra space); otherwise they copy.
-    let moving = crate::win::same_volume(folder, &root);
+    let moving = crate::platform::same_volume(folder, &root);
     for (session, src_dir, copies) in work {
         if ctx.cancelled() {
             bail!("cancelled");

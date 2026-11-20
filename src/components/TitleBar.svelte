@@ -37,7 +37,7 @@
   });
 </script>
 
-<header class="bar" data-tauri-drag-region>
+<header class="bar" class:mac={app.platform === 'macos'} data-tauri-drag-region>
   <div class="brand" data-tauri-drag-region>
     <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="var(--you)" stroke-width="2.6" /><circle cx="12" cy="12" r="4" fill="var(--death)" /></svg>
     <span class="name" data-tauri-drag-region>Matt Game Recorder</span>
@@ -155,10 +155,13 @@
       {/snippet}
     </Popover>
 
-    <div class="sep"></div>
-    <button class="win-btn" aria-label={t.titleBar.minimize} onclick={() => win.minimize()}><Icon name="minimize" size={15} /></button>
-    <button class="win-btn" aria-label={t.titleBar.maximize} onclick={() => win.toggleMaximize()}><Icon name="maximize" size={13} /></button>
-    <button class="win-btn close" aria-label={t.titleBar.closeToTray} title={t.titleBar.closeTitle} onclick={() => win.close()}><Icon name="close" size={15} /></button>
+    <!-- macOS keeps its own window buttons (the traffic lights, at the bar's left). -->
+    {#if app.platform !== 'macos'}
+      <div class="sep"></div>
+      <button class="win-btn" aria-label={t.titleBar.minimize} onclick={() => win.minimize()}><Icon name="minimize" size={15} /></button>
+      <button class="win-btn" aria-label={t.titleBar.maximize} onclick={() => win.toggleMaximize()}><Icon name="maximize" size={13} /></button>
+      <button class="win-btn close" aria-label={t.titleBar.closeToTray} title={t.titleBar.closeTitle} onclick={() => win.close()}><Icon name="close" size={15} /></button>
+    {/if}
   </div>
 </header>
 
@@ -172,6 +175,14 @@
     background: var(--bg-sunk);
     border-bottom: 1px solid var(--seam);
     flex: none;
+  }
+  /* Room for the traffic lights (three 12px buttons from x = 14). */
+  .bar.mac {
+    padding-left: 84px;
+  }
+  /* Without window buttons the tools end at the edge; keep the same gap as on the left. */
+  .bar.mac .tools {
+    padding-right: 10px;
   }
   .brand {
     display: flex;

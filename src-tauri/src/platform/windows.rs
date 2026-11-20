@@ -1,6 +1,6 @@
-//! Thin wrappers over the Win32 calls the recorder needs.
+//! The platform layer on Windows: thin wrappers over the Win32 calls the recorder needs.
 
-use serde::Serialize;
+use super::{existing_ancestor, Monitor, ProcInfo};
 use std::os::windows::process::CommandExt;
 use std::process::Command;
 use windows::core::{BOOL, PCWSTR};
@@ -35,12 +35,6 @@ pub fn hidden_command_low(program: impl AsRef<std::ffi::OsStr>) -> Command {
     cmd
 }
 
-#[derive(Clone, Debug)]
-pub struct ProcInfo {
-    pub pid: u32,
-    pub name: String,
-}
-
 /// Snapshot of running processes (cheap: one ToolHelp snapshot).
 pub fn processes() -> Vec<ProcInfo> {
     let mut out = Vec::new();
@@ -59,10 +53,6 @@ pub fn processes() -> Vec<ProcInfo> {
         let _ = CloseHandle(snap);
     }
     out
-}
-
-pub fn find_process(procs: &[ProcInfo], name: &str) -> Option<u32> {
-    procs.iter().find(|p| p.name.eq_ignore_ascii_case(name)).map(|p| p.pid)
 }
 
 /// Full path of a running process's executable.
@@ -137,19 +127,6 @@ pub fn monitor_of_window(hwnd: isize) -> isize {
     unsafe { MonitorFromWindow(HWND(hwnd as *mut _), MONITOR_DEFAULTTONEAREST).0 as isize }
 }
 
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Monitor {
-    pub index: u32,
-    pub handle: isize,
-    pub name: String,
-    pub primary: bool,
-    pub x: i32,
-    pub y: i32,
-    pub width: u32,
-    pub height: u32,
-}
-
 unsafe extern "system" fn monitor_cb(hmon: HMONITOR, _: HDC, _: *mut RECT, lparam: LPARAM) -> BOOL {
     let list = &mut *(lparam.0 as *mut Vec<Monitor>);
     let mut info = MONITORINFOEXW::default();
@@ -196,14 +173,15 @@ pub fn suspend_process(pid: u32, suspend: bool) -> bool {
     }
 }
 
-/// Hide (or show) a window from screen capture.
-pub fn exclude_from_capture(hwnd: isize, exclude: bool) {
-    unsafe {
-        let _ = SetWindowDisplayAffinity(HWND(hwnd as *mut _), if exclude { WDA_EXCLUDEFROMCAPTURE } else { WDA_NONE });
+/// Hide (or show) one of our windows from screen capture. Call on the UI thread.
+pub fn exclude_from_capture(w: &tauri::WebviewWindow, exclude: bool) {
+    if let Ok(h) = w.hwnd() {
+        unsafe {
+            let _ = SetWindowDisplayAffinity(h, if exclude { WDA_EXCLUDEFROMCAPTURE } else { WDA_NONE });
+        }
     }
 }
 
-/// (free bytes available to the user, total bytes) for the volume holding `path`.
 /// Installed font family names, sorted. Old bitmap fonts and vertical "@" variants are left out.
 pub fn font_families() -> Vec<String> {
     use std::collections::BTreeSet;
@@ -231,11 +209,9 @@ pub fn font_families() -> Vec<String> {
     set.into_iter().collect()
 }
 
+/// (free bytes available to the user, total bytes) for the volume holding `path`.
 pub fn disk_space(path: &std::path::Path) -> Option<(u64, u64)> {
-    let mut probe = path.to_path_buf();
-    while !probe.exists() {
-        probe = probe.parent()?.to_path_buf();
-    }
+    let probe = existing_ancestor(path)?;
     let wide: Vec<u16> = probe.as_os_str().encode_wide_null();
     let (mut free, mut total) = (0u64, 0u64);
     unsafe { GetDiskFreeSpaceExW(PCWSTR(wide.as_ptr()), Some(&mut free), Some(&mut total), None).ok()? };
@@ -245,20 +221,12 @@ pub fn disk_space(path: &std::path::Path) -> Option<(u64, u64)> {
 /// The volume a path is on ("C:\\", or a mount point), lowercased; `None` if unknown.
 pub fn volume_of(path: &std::path::Path) -> Option<String> {
     use windows::Win32::Storage::FileSystem::GetVolumePathNameW;
-    let mut probe = path.to_path_buf();
-    while !probe.exists() {
-        probe = probe.parent()?.to_path_buf();
-    }
+    let probe = existing_ancestor(path)?;
     let wide: Vec<u16> = probe.as_os_str().encode_wide_null();
     let mut buf = [0u16; 512];
     unsafe { GetVolumePathNameW(PCWSTR(wide.as_ptr()), &mut buf).ok()? };
     let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
     Some(String::from_utf16_lossy(&buf[..len]).to_lowercase())
-}
-
-/// Both paths are on the same volume, so a file moves between them by renaming (instantly).
-pub fn same_volume(a: &std::path::Path, b: &std::path::Path) -> bool {
-    matches!((volume_of(a), volume_of(b)), (Some(x), Some(y)) if x == y)
 }
 
 trait EncodeWideNull {
@@ -275,7 +243,7 @@ impl EncodeWideNull for std::ffi::OsStr {
 /// Open the file's folder in Explorer with the file selected (or just the folder when the file
 /// is gone). Asks the shell directly: `explorer /select,<path>` needs exact quoting and silently
 /// opens Documents instead when a path with spaces arrives quoted as one argument.
-pub fn reveal_in_explorer(path: &std::path::Path) -> anyhow::Result<()> {
+pub fn reveal_in_file_manager(path: &std::path::Path) -> anyhow::Result<()> {
     use std::os::windows::ffi::OsStrExt;
     use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
     use windows::Win32::UI::Shell::{ILCreateFromPathW, ILFree, SHOpenFolderAndSelectItems};
@@ -295,3 +263,8 @@ pub fn reveal_in_explorer(path: &std::path::Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Open a folder in Explorer.
+pub fn open_folder(path: &std::path::Path) -> anyhow::Result<()> {
+    hidden_command("explorer.exe").arg(path).spawn()?;
+    Ok(())
+}

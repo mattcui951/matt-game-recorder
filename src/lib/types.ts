@@ -233,3 +233,11 @@ export type OutplayedScan = {
   /** The Outplayed folder is on the media folder's drive. */
   sameDrive: boolean;
 };
+
+/** The operating system the app runs on. */
+export type Platform = 'windows' | 'macos';
+
+export interface Permissions {
+  screen: boolean;
+  input: boolean;
+}

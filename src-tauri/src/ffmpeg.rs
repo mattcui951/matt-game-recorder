@@ -1,7 +1,7 @@
 //! FFmpeg/ffprobe helpers: encoder selection, remux, cut, thumbnails, rendering.
 
 use crate::paths;
-use crate::win::hidden_command;
+use crate::platform::hidden_command;
 use anyhow::{bail, Context, Result};
 use serde::Serialize;
 use std::io::{BufRead, BufReader};
@@ -20,6 +20,7 @@ pub struct EncoderInfo {
     pub available: bool,
 }
 
+#[cfg(windows)]
 const ENCODERS: &[(&str, &str)] = &[
     ("av1_nvenc", "NVIDIA NVENC AV1 (GPU, smallest files)"),
     ("hevc_nvenc", "NVIDIA NVENC HEVC (GPU)"),
@@ -30,6 +31,14 @@ const ENCODERS: &[(&str, &str)] = &[
     ("av1_qsv", "Intel Quick Sync AV1 (GPU)"),
     ("hevc_qsv", "Intel Quick Sync HEVC (GPU)"),
     ("h264_qsv", "Intel Quick Sync H.264 (GPU)"),
+    ("libx264", "x264 H.264 (CPU)"),
+];
+
+/// Apple VideoToolbox: the media engine of Apple silicon (and Intel Macs' GPUs).
+#[cfg(target_os = "macos")]
+const ENCODERS: &[(&str, &str)] = &[
+    ("hevc_videotoolbox", "Apple VideoToolbox HEVC (GPU, smaller files)"),
+    ("h264_videotoolbox", "Apple VideoToolbox H.264 (GPU, most compatible)"),
     ("libx264", "x264 H.264 (CPU)"),
 ];
 
@@ -71,12 +80,15 @@ pub fn family(encoder: &str) -> &'static str {
         "amf"
     } else if encoder.ends_with("_qsv") {
         "qsv"
+    } else if encoder.ends_with("_videotoolbox") {
+        "videotoolbox"
     } else {
         "cpu"
     }
 }
 
 /// Filter appended after a D3D11 capture source so the encoder can consume its frames.
+#[cfg(windows)]
 pub fn capture_upload_chain(encoder: &str) -> &'static str {
     match family(encoder) {
         // NVENC takes D3D11 BGRA textures directly: zero copies, zero CPU conversion.
@@ -129,6 +141,18 @@ pub fn video_encoder_args(encoder: &str, preset: &str, bitrate_kbps: u32, fps: u
             let p = match preset { "quality" => "slower", "performance" | "perf_lowlatency" => "veryfast", _ => "medium" };
             a.extend([s("-preset"), s(p), s("-b:v"), format!("{}k", b * 2 / 3), s("-maxrate"), format!("{b}k")]);
         }
+        "videotoolbox" => {
+            // Hardware only (a software fallback would load the CPU mid-game). Average bitrate
+            // with a peak cap; "performance" asks for speed over compression, low latency
+            // turns off frame reordering.
+            a.extend([s("-allow_sw"), s("0"), s("-b:v"), format!("{}k", b * 2 / 3), s("-maxrate"), format!("{b}k"), s("-bufsize"), format!("{}k", b * 2)]);
+            if preset.starts_with("perf") {
+                a.extend([s("-prio_speed"), s("1")]);
+            }
+            if preset.contains("lowlatency") {
+                a.extend([s("-bf"), s("0")]);
+            }
+        }
         _ => {
             let p = match preset { "quality" => "medium", "performance" | "perf_lowlatency" => "superfast", _ => "veryfast" };
             a.extend([s("-preset"), s(p), s("-crf"), s("23"), s("-maxrate"), format!("{b}k"), s("-bufsize"), format!("{}k", b * 2)]);
@@ -143,6 +167,10 @@ pub fn video_encoder_args(encoder: &str, preset: &str, bitrate_kbps: u32, fps: u
     if family(encoder) == "nvenc" {
         // NVENC only turns forced keyframes into real IDR frames with this flag.
         a.extend([s("-forced-idr"), s("1")]);
+    }
+    if cfg!(target_os = "macos") && encoder.starts_with("hevc") {
+        // The macOS web view (and QuickTime) only play HEVC in MP4 tagged hvc1.
+        a.extend([s("-tag:v"), s("hvc1")]);
     }
     a
 }
@@ -286,7 +314,7 @@ pub fn benchmark(encoder: &str, input: &Path, bitrate_kbps: u32) -> Result<f64> 
         es: "no se puede leer el vídeo", fr: "impossible de lire la vidéo",
         ja: "ビデオを読み込めません", ko: "동영상을 읽을 수 없습니다", ru: "не удаётся прочитать видео"))?;
     let fps = (src.fps.round() as u32).clamp(10, 240);
-    let mut cmd = crate::win::hidden_command_low(paths::ffmpeg());
+    let mut cmd = crate::platform::hidden_command_low(paths::ffmpeg());
     cmd.env("SVT_LOG", "1");
     cmd.args(["-hide_banner", "-loglevel", "error", "-nostats", "-progress", "pipe:1", "-stats_period", "0.25"]);
     if family(encoder) == "nvenc" {
@@ -413,13 +441,13 @@ fn run_progress(cmd: &mut std::process::Command, cancel: &AtomicBool, paused: Op
                 while !finished.load(Ordering::Relaxed) {
                     // A cancel resumes it, so the read loop below sees the cancel.
                     let want = paused.load(Ordering::Relaxed) && !cancel.load(Ordering::Relaxed);
-                    if want != suspended && crate::win::suspend_process(pid, want) {
+                    if want != suspended && crate::platform::suspend_process(pid, want) {
                         suspended = want;
                     }
                     std::thread::sleep(std::time::Duration::from_millis(250));
                 }
                 if suspended {
-                    crate::win::suspend_process(pid, false);
+                    crate::platform::suspend_process(pid, false);
                 }
             });
         }
@@ -643,7 +671,7 @@ pub fn convert(
     let fps = (src.fps.round() as u32).clamp(10, 240);
     let gpu = family(encoder) == "nvenc";
     let mut run_once = |hw: bool| -> Result<bool> {
-        let mut cmd = crate::win::hidden_command_low(paths::ffmpeg());
+        let mut cmd = crate::platform::hidden_command_low(paths::ffmpeg());
         // SVT-AV1 logs on its own; errors only.
         cmd.env("SVT_LOG", "1");
         cmd.args(PROGRESS_ARGS);

@@ -18,14 +18,16 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
-    "windows": { "nsis": { "installMode": "perMachine" } },
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/icon.ico"],
-    "resources": {
-      "binaries/ffmpeg.exe": "ffmpeg.exe",
-      "binaries/ffprobe.exe": "ffprobe.exe",
-      "icons/icon.ico": "app.ico"
-    },
+    "targets": [
+      "app"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
     "createUpdaterArtifacts": true
   },
   "plugins": {
@@ -33,10 +35,7 @@
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDBFMzk0MkI3NTk3N0ZFRUMKUldUcy9uZFp0MEk1RGdVSTRQQUlCVjliVno0WWxCb2I1c0Z0cmhOUVBvTXV6Y3JCNWFyTVVManUK",
       "endpoints": [
         "https://github.com/mattcui951/matt-game-recorder/releases/latest/download/latest.json"
-      ],
-      "windows": {
-        "installMode": "passive"
-      }
+      ]
     }
   }
 }

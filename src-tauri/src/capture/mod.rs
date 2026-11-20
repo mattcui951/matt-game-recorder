@@ -1,16 +1,21 @@
-//! The recorder: one ffmpeg process capturing a window or monitor on the GPU (Windows Graphics
-//! Capture -> hardware encoder), with audio fed through a named pipe. ffmpeg writes fragmented
-//! MP4 to stdout; we split it into keyframe-aligned fragments and route them to:
+//! The recorder: one ffmpeg process encoding a window or monitor on the GPU, with audio fed
+//! through a pipe. On Windows ffmpeg captures by itself (Windows Graphics Capture); on macOS
+//! ScreenCaptureKit captures and hands ffmpeg raw frames through a FIFO (see `sck`). ffmpeg
+//! writes fragmented MP4 to stdout; we split it into keyframe-aligned fragments and route them to:
 //!   * a file (full match / full session), and/or
 //!   * a ring buffer in RAM or on disk (highlights / manual clips), from which clips are cut
 //!     by copying fragments, never re-encoding.
 
 pub mod audio;
+#[cfg(target_os = "macos")]
+pub mod fifo;
 pub mod fmp4;
+#[cfg(target_os = "macos")]
+pub mod sck;
 
 use crate::ffmpeg;
 use crate::paths;
-use crate::win::hidden_command;
+use crate::platform::hidden_command;
 use anyhow::{bail, Context, Result};
 use audio::{AudioConfig, AudioPipeline};
 use parking_lot::Mutex;
@@ -53,6 +58,8 @@ pub struct CaptureOptions {
     pub bitrate_kbps: u32,
     pub audio: AudioConfig,
     pub webcam: Option<String>,
+    /// Leave this app's windows out of a monitor recording (macOS; Windows hides them per window).
+    pub exclude_self: bool,
     /// Write the whole recording here (fragmented while recording, finalized on stop).
     pub file: Option<PathBuf>,
     pub ring: Option<RingOptions>,
@@ -88,6 +95,8 @@ pub struct Recorder {
     child: Child,
     stdin: Option<ChildStdin>,
     audio: Option<AudioPipeline>,
+    #[cfg(target_os = "macos")]
+    video: Option<sck::Capture>,
     state: Arc<Mutex<State>>,
     reader: Option<JoinHandle<()>>,
     stderr_tail: Arc<Mutex<VecDeque<String>>>,
@@ -110,41 +119,15 @@ impl Recorder {
     pub fn start(opts: CaptureOptions) -> Result<Recorder> {
         let id = uuid::Uuid::new_v4().simple().to_string();
         let audio = AudioPipeline::start(opts.audio.clone(), &id[..12])?;
-
-        let mut src = match opts.target {
-            Target::Window(h) => format!("gfxcapture=hwnd={h}"),
-            Target::Monitor(h) => format!("gfxcapture=hmonitor={h}"),
-        };
-        src.push_str(&format!(
-            ":max_framerate={fps}:capture_cursor={c}:display_border={b}",
-            fps = opts.fps,
-            c = opts.cursor as u8,
-            b = opts.border as u8
-        ));
-        if let Some((w, h)) = opts.size {
-            src.push_str(&format!(":width={}:height={}:resize_mode={}:scale_mode=bicubic", w / 2 * 2, h / 2 * 2, if opts.stretch { "scale" } else { "scale_aspect" }));
-        }
         let encoder = ffmpeg::best_encoder(&opts.encoder);
-        let graph = match &opts.webcam {
-            Some(_) => {
-                // Webcam in the bottom-right corner at a quarter of the frame height.
-                let frame_h = opts.size.map(|s| s.1).unwrap_or(1080);
-                let cam_h = (frame_h / 4 / 2 * 2).max(120);
-                format!(
-                    "{src},fps={fps},hwdownload,format=bgra[g];[1:v]scale=-2:{cam_h}[cam];\
-                     [g][cam]overlay@cam=x=W-w-24:y=H-h-24,format=nv12[v]",
-                    fps = opts.fps
-                )
-            }
-            None => format!("{src},fps={fps}{up}[v]", fps = opts.fps, up = ffmpeg::capture_upload_chain(&encoder)),
-        };
 
         let mut cmd = hidden_command(paths::ffmpeg());
         cmd.args(["-hide_banner", "-loglevel", "warning", "-nostats"]);
         cmd.args(["-f", "f32le", "-ar", "48000", "-ac", "2", "-thread_queue_size", "4096", "-i", audio.pipe_name()]);
-        if let Some(cam) = &opts.webcam {
-            cmd.args(["-f", "dshow", "-rtbufsize", "64M", "-thread_queue_size", "512", "-i"]).arg(format!("video={cam}"));
-        }
+        #[cfg(windows)]
+        let graph = video_inputs(&opts, &encoder, &mut cmd);
+        #[cfg(target_os = "macos")]
+        let (graph, video) = video_inputs(&opts, &mut cmd, &audio, &id[..12])?;
         cmd.args(["-filter_complex", &graph, "-map", "[v]", "-map", "0:a"]);
         cmd.args(ffmpeg::video_encoder_args(&encoder, &opts.encoder_preset, opts.bitrate_kbps, opts.fps));
         cmd.args(ffmpeg::audio_encoder_args());
@@ -232,6 +215,8 @@ impl Recorder {
             child,
             stdin,
             audio: Some(audio),
+            #[cfg(target_os = "macos")]
+            video: Some(video),
             state,
             reader: Some(reader),
             stderr_tail,
@@ -357,9 +342,7 @@ impl Recorder {
                 _ => std::thread::sleep(Duration::from_millis(50)),
             }
         }
-        if let Some(a) = self.audio.take() {
-            a.stop();
-        }
+        self.stop_sources();
         if let Some(r) = self.reader.take() {
             let _ = r.join();
         }
@@ -413,11 +396,95 @@ impl Drop for Recorder {
         if self.reader.is_some() {
             let _ = self.child.kill();
             let _ = self.child.wait();
-            if let Some(a) = self.audio.take() {
-                a.stop();
-            }
+            self.stop_sources();
         }
     }
+}
+
+impl Recorder {
+    /// Stop feeding ffmpeg (it has exited or been told to).
+    fn stop_sources(&mut self) {
+        #[cfg(target_os = "macos")]
+        if let Some(v) = self.video.take() {
+            v.stop();
+        }
+        if let Some(a) = self.audio.take() {
+            a.stop();
+        }
+    }
+}
+
+/// Webcam in the bottom-right corner at a quarter of the frame height, from input `cam_input`
+/// over the picture labelled `[g]`.
+fn webcam_overlay(opts: &CaptureOptions, cam_input: u32) -> String {
+    let frame_h = opts.size.map(|s| s.1).unwrap_or(1080);
+    let cam_h = (frame_h / 4 / 2 * 2).max(120);
+    format!("[{cam_input}:v]scale=-2:{cam_h}[cam];[g][cam]overlay@cam=x=W-w-24:y=H-h-24,format=nv12[v]")
+}
+
+/// Windows: ffmpeg captures the window or monitor itself (Windows Graphics Capture, a D3D11
+/// filter source), so the video needs no input; the webcam is input 1 (DirectShow). Returns the
+/// filter graph, ending in `[v]`.
+#[cfg(windows)]
+fn video_inputs(opts: &CaptureOptions, encoder: &str, cmd: &mut std::process::Command) -> String {
+    let mut src = match opts.target {
+        Target::Window(h) => format!("gfxcapture=hwnd={h}"),
+        Target::Monitor(h) => format!("gfxcapture=hmonitor={h}"),
+    };
+    src.push_str(&format!(
+        ":max_framerate={fps}:capture_cursor={c}:display_border={b}",
+        fps = opts.fps,
+        c = opts.cursor as u8,
+        b = opts.border as u8
+    ));
+    if let Some((w, h)) = opts.size {
+        src.push_str(&format!(":width={}:height={}:resize_mode={}:scale_mode=bicubic", w / 2 * 2, h / 2 * 2, if opts.stretch { "scale" } else { "scale_aspect" }));
+    }
+    match &opts.webcam {
+        Some(cam) => {
+            cmd.args(["-f", "dshow", "-rtbufsize", "64M", "-thread_queue_size", "512", "-i"]).arg(format!("video={cam}"));
+            format!("{src},fps={fps},hwdownload,format=bgra[g];{overlay}", fps = opts.fps, overlay = webcam_overlay(opts, 1))
+        }
+        None => format!("{src},fps={fps}{up}[v]", fps = opts.fps, up = ffmpeg::capture_upload_chain(encoder)),
+    }
+}
+
+/// macOS: ScreenCaptureKit captures (and scales) the picture and the system sound; the picture
+/// reaches ffmpeg as raw NV12 frames on input 1, the webcam (AVFoundation) is input 2. Returns
+/// the filter graph, ending in `[v]`, and the running capture.
+#[cfg(target_os = "macos")]
+fn video_inputs(opts: &CaptureOptions, cmd: &mut std::process::Command, audio: &AudioPipeline, id: &str) -> Result<(String, sck::Capture)> {
+    use audio::SystemSource;
+    let source = match opts.target {
+        Target::Window(h) => sck::Source::Window(h as u32),
+        Target::Monitor(h) => sck::Source::Display(h as u32),
+    };
+    let (w, h) = opts
+        .size
+        .or_else(|| match opts.target {
+            Target::Window(h) => crate::platform::window_size(h),
+            Target::Monitor(h) => crate::platform::monitors().into_iter().find(|m| m.handle == h).map(|m| (m.width, m.height)),
+        })
+        .unwrap_or((1920, 1080));
+    let (w, h) = (w / 2 * 2, h / 2 * 2);
+    let video = sck::VideoOptions { source, width: w, height: h, fps: opts.fps, cursor: opts.cursor, stretch: opts.stretch, exclude_self: opts.exclude_self };
+    let game_pid = match opts.audio.system {
+        Some(SystemSource::Process(pid)) => Some(pid),
+        _ => None,
+    };
+    let capture = sck::Capture::start(&video, audio.system_ring().map(|ring| (ring, game_pid)), id)?;
+    cmd.args(["-f", "rawvideo", "-pix_fmt", "nv12", "-video_size", &format!("{w}x{h}"), "-framerate", &opts.fps.to_string(), "-thread_queue_size", "64", "-i"])
+        .arg(capture.fifo_path());
+    // ScreenCaptureKit's 420v frames: BT.709, video range.
+    let tag = "setparams=range=tv:colorspace=bt709:color_primaries=bt709:color_trc=bt709";
+    let graph = match &opts.webcam {
+        Some(cam) => {
+            cmd.args(["-f", "avfoundation", "-framerate", "30", "-thread_queue_size", "512", "-i"]).arg(format!("{cam}:none"));
+            format!("[1:v]{tag}[g];{}", webcam_overlay(opts, 2))
+        }
+        None => format!("[1:v]{tag}[v]"),
+    };
+    Ok((graph, capture))
 }
 
 impl State {
@@ -450,13 +517,24 @@ fn push_ring(s: &mut State, start: f64, bytes: Vec<u8>) {
 
 /// Grab a single frame of a window to an image file.
 pub fn screenshot(target: &Target, output: &Path) -> Result<()> {
+    if let Some(dir) = output.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    grab_still(target, output).map_err(|e| {
+        let err = format!("{e:#}");
+        anyhow::anyhow!(tr!("screenshot failed: {err}",
+            zh: "截图失败：{err}", tw: "截圖失敗：{err}",
+            es: "no se pudo hacer la captura: {err}", fr: "échec de la capture d'écran : {err}",
+            ja: "スクリーンショットに失敗しました: {err}", ko: "스크린샷 실패: {err}", ru: "не удалось сделать снимок экрана: {err}"))
+    })
+}
+
+#[cfg(windows)]
+fn grab_still(target: &Target, output: &Path) -> Result<()> {
     let src = match target {
         Target::Window(h) => format!("gfxcapture=hwnd={h}:capture_cursor=0"),
         Target::Monitor(h) => format!("gfxcapture=hmonitor={h}:capture_cursor=0"),
     };
-    if let Some(dir) = output.parent() {
-        std::fs::create_dir_all(dir)?;
-    }
     let out = hidden_command(paths::ffmpeg())
         .args(["-hide_banner", "-loglevel", "error", "-y", "-filter_complex"])
         .arg(format!("{src},hwdownload,format=bgra[v]"))
@@ -465,17 +543,21 @@ pub fn screenshot(target: &Target, output: &Path) -> Result<()> {
         .stdin(Stdio::null())
         .output()?;
     if !out.status.success() {
-        let err = String::from_utf8_lossy(&out.stderr);
-        let err = err.trim();
-        bail!(tr!("screenshot failed: {err}",
-            zh: "截图失败：{err}", tw: "截圖失敗：{err}",
-            es: "no se pudo hacer la captura: {err}", fr: "échec de la capture d'écran : {err}",
-            ja: "スクリーンショットに失敗しました: {err}", ko: "스크린샷 실패: {err}", ru: "не удалось сделать снимок экрана: {err}"));
+        bail!("{}", String::from_utf8_lossy(&out.stderr).trim());
     }
     Ok(())
 }
 
+#[cfg(target_os = "macos")]
+fn grab_still(target: &Target, output: &Path) -> Result<()> {
+    match target {
+        Target::Window(h) => sck::screenshot(sck::Source::Window(*h as u32), output),
+        Target::Monitor(h) => sck::screenshot(sck::Source::Display(*h as u32), output),
+    }
+}
+
 /// Webcam devices DirectShow exposes.
+#[cfg(windows)]
 pub fn list_webcams() -> Vec<String> {
     let out = hidden_command(paths::ffmpeg())
         .args(["-hide_banner", "-list_devices", "true", "-f", "dshow", "-i", "dummy"])
@@ -487,4 +569,51 @@ pub fn list_webcams() -> Vec<String> {
         .filter(|l| l.contains("(video)"))
         .filter_map(|l| l.split('"').nth(1).map(str::to_string))
         .collect()
+}
+
+/// Cameras AVFoundation exposes (its screen inputs left out).
+#[cfg(target_os = "macos")]
+pub fn list_webcams() -> Vec<String> {
+    let out = hidden_command(paths::ffmpeg())
+        .args(["-hide_banner", "-f", "avfoundation", "-list_devices", "true", "-i", ""])
+        .stdin(Stdio::null())
+        .output();
+    let Ok(out) = out else { return vec![] };
+    parse_avfoundation_cameras(&String::from_utf8_lossy(&out.stderr))
+}
+
+/// Names from ffmpeg's AVFoundation device list: "[AVFoundation indev @ 0x..] [0] FaceTime HD Camera".
+#[cfg_attr(windows, allow(dead_code))]
+fn parse_avfoundation_cameras(list: &str) -> Vec<String> {
+    let mut video = false;
+    let mut out = Vec::new();
+    for line in list.lines() {
+        if line.contains("AVFoundation video devices") {
+            video = true;
+        } else if line.contains("AVFoundation audio devices") {
+            video = false;
+        } else if video {
+            // "[AVFoundation indev @ 0x1] [0] Name": the index follows the first "] [".
+            let Some((_, rest)) = line.split_once("] [") else { continue };
+            let Some((_, name)) = rest.split_once("] ") else { continue };
+            if !name.starts_with("Capture screen") {
+                out.push(name.trim().to_string());
+            }
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn avfoundation_camera_names() {
+        let list = "[AVFoundation indev @ 0x1] AVFoundation video devices:\n\
+            [AVFoundation indev @ 0x1] [0] FaceTime HD Camera\n\
+            [AVFoundation indev @ 0x1] [1] Capture screen 0\n\
+            [AVFoundation indev @ 0x1] [2] Cam [Studio] 4K\n\
+            [AVFoundation indev @ 0x1] AVFoundation audio devices:\n\
+            [AVFoundation indev @ 0x1] [0] MacBook Pro Microphone\n";
+        assert_eq!(super::parse_avfoundation_cameras(list), vec!["FaceTime HD Camera", "Cam [Studio] 4K"]);
+    }
 }

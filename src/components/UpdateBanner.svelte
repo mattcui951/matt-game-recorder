@@ -17,10 +17,10 @@
     <div class="text">
       {#if u.phase === 'downloading'}
         <b>{pct == null ? t.update.downloadingNoPct(u.version) : t.update.downloading(u.version, pct)}</b>
-        <span>{t.update.adminNote}</span>
+        {#if app.platform !== 'macos'}<span>{t.update.adminNote}</span>{/if}
       {:else if u.phase === 'installing'}
         <b>{t.update.installing(u.version)}</b>
-        <span>{t.update.adminNote}</span>
+        {#if app.platform !== 'macos'}<span>{t.update.adminNote}</span>{/if}
       {:else}
         <b>{t.update.available(u.version)}</b>
         <span>{updateBlocked() ? t.update.afterGame : t.update.current(app.version)}</span>

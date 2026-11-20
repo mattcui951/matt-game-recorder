@@ -7,7 +7,7 @@
   import Slider from '../components/Slider.svelte';
   import Toggle from '../components/Toggle.svelte';
   import { api } from '../lib/api';
-  import { app, errorText, setAppearance, toast } from '../lib/state.svelte';
+  import { app, errorText, osName, setAppearance, toast } from '../lib/state.svelte';
   import {
     activeThemeId,
     allThemes,
@@ -202,8 +202,8 @@
   <section class="sec">
     <h2>{t.appearance.theme}</h2>
     <div class="row">
-      <span>{t.appearance.follow}<small>{t.appearance.followHint(systemDark())}</small></span>
-      <Toggle label={t.appearance.follow} checked={a.followSystem} onchange={(v) => setAppearance((x) => (x.followSystem = v))} />
+      <span>{t.appearance.follow(osName())}<small>{t.appearance.followHint(systemDark(), osName())}</small></span>
+      <Toggle label={t.appearance.follow(osName())} checked={a.followSystem} onchange={(v) => setAppearance((x) => (x.followSystem = v))} />
     </div>
     {#if a.followSystem}
       <div class="row sub"><span>{t.appearance.lightTheme}</span><div class="ctl"><Select label={t.appearance.lightTheme} value={a.lightTheme} options={lightOptions} onchange={(v) => setAppearance((x) => (x.lightTheme = v))} /></div></div>

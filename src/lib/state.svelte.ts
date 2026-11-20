@@ -3,7 +3,7 @@ import { api } from './api';
 import { activeThemeId, applyAppearance, broadcastAppearance, DEFAULT_APPEARANCE, themeColors } from './appearance';
 import { championsLocal } from './format.svelte';
 import { applyLanguage, i18n, resolveLanguage, t, type LanguageSetting } from './i18n.svelte';
-import type { Appearance, CpuAssist, DiskInfo, Job, Recording, Session, Settings, Snapshot, Status, UpdateState } from './types';
+import type { Appearance, CpuAssist, DiskInfo, Job, Platform, Recording, Session, Settings, Snapshot, Status, UpdateState } from './types';
 
 export type LibraryRoute = { name: 'library'; tab: 'sessions' | 'favorites' | 'deleted' };
 export type Route =
@@ -18,6 +18,8 @@ const idleStatus: Status = { state: 'idle', elapsed: 0, eventsStatus: 'idle', ev
 
 export const app = $state({
   ready: false,
+  /** The operating system, from the backend (until then a guess from the browser). */
+  platform: (typeof navigator !== 'undefined' && /Mac/.test(navigator.platform) ? 'macos' : 'windows') as Platform,
   settings: null as Settings | null,
   mediaUrl: '',
   version: '',
@@ -35,6 +37,11 @@ export const app = $state({
   /** "Later" on the update banner hides it for that version until the app restarts. */
   updateDismissed: null as string | null,
 });
+
+/** The operating system's name, for labels such as "Match Windows". */
+export function osName(): string {
+  return app.platform === 'macos' ? 'macOS' : 'Windows';
+}
 
 const RELEASES = 'https://github.com/mattcui951/matt-game-recorder/releases';
 
@@ -248,9 +255,11 @@ export async function init() {
   ui.libraryView = boot.settings.ui.libraryView;
   ui.showApm = boot.settings.ui.showApm;
   i18n.system = boot.systemLanguage;
+  app.platform = boot.platform;
+  document.documentElement.dataset.platform = boot.platform;
   useLanguage(boot.settings.general.language);
   applyAppearance(boot.settings.appearance);
-  // Windows switching light/dark matters when the theme follows it.
+  // The system switching light/dark matters when the theme follows it.
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
     if (app.settings?.appearance.followSystem) setAppearance(() => {});
   });

@@ -25,6 +25,7 @@ fn with_debug_port<'a>(b: WebviewWindowBuilder<'a, tauri::Wry, AppHandle>) -> We
     #[cfg(debug_assertions)]
     {
         let b = b.data_directory(crate::paths::config_dir().join("webview-dev"));
+        #[cfg(windows)]
         if let Ok(port) = std::env::var("MGR_DEVTOOLS_PORT") {
             // Keep wry's defaults; setting arguments replaces them.
             return b.additional_browser_args(&format!(
@@ -157,9 +158,18 @@ impl Core {
             .title("Matt Game Recorder")
             .inner_size(1440.0, 900.0)
             .min_inner_size(1100.0, 680.0)
-            .decorations(false)
             .background_color(self.window_color())
             .center();
+        // The app draws its own title bar. Windows: no frame at all, the bar has its own window
+        // buttons. macOS: the bar runs under a transparent system title bar, so the native
+        // traffic lights (and full screen, window snapping) stay; the bar leaves room for them.
+        #[cfg(windows)]
+        let built = built.decorations(false);
+        #[cfg(target_os = "macos")]
+        let built = built
+            .title_bar_style(tauri::TitleBarStyle::Overlay)
+            .hidden_title(true)
+            .traffic_light_position(tauri::LogicalPosition::new(14.0, 20.0));
         let built = with_debug_port(built).build();
         match built {
             Ok(w) => self.apply_capture_affinity(&w),
@@ -197,9 +207,7 @@ impl Core {
                 "main" => self.settings.read().general.capture_own_windows,
                 _ => self.settings.read().general.capture_notifications,
             };
-        if let Ok(h) = w.hwnd() {
-            crate::win::exclude_from_capture(h.0 as isize, !show);
-        }
+        crate::platform::exclude_from_capture(w, !show);
     }
 
     pub fn refresh_capture_affinity(&self) {
@@ -218,8 +226,8 @@ impl Core {
         if self.app.get_webview_window("dashboard").is_some() {
             return;
         }
-        let game_mon = crate::win::monitor_of_window(game_hwnd);
-        let Some(mon) = crate::win::monitors().into_iter().find(|m| m.handle != game_mon) else { return };
+        let game_mon = crate::platform::monitor_of_window(game_hwnd);
+        let Some(mon) = crate::platform::monitors().into_iter().find(|m| m.handle != game_mon) else { return };
         let scale = 1.0_f64.max(self.app.primary_monitor().ok().flatten().map(|m| m.scale_factor()).unwrap_or(1.0));
         let (w, h) = (400.0, 640.0);
         let x = mon.x as f64 / scale + mon.width as f64 / scale - w - 24.0;

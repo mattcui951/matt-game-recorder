@@ -22,9 +22,10 @@ export const DEFAULT_APPEARANCE: Appearance = {
   windowBg: '#0d1014',
 };
 
-export const DEFAULT_FONT_UI = 'Segoe UI Variable Text';
+/** Windows' UI font; on macOS the system font (SF Pro), which CSS can only reach as system-ui. */
+export const DEFAULT_FONT_UI = typeof navigator !== 'undefined' && /Mac/.test(navigator.platform) ? 'System UI' : 'Segoe UI Variable Text';
 export const DEFAULT_FONT_SCORE = 'Rajdhani';
-/** Fonts that ship inside the app (always available, even if not installed in Windows). */
+/** Fonts that ship inside the app (always available, even if not installed on the system). */
 export const BUNDLED_FONTS = ['Rajdhani', 'Chakra Petch'];
 
 const CORNERS: Record<string, [number, number, number]> = { sharp: [1, 2, 2], default: [4, 6, 10], round: [6, 9, 14] };
