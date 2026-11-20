@@ -972,7 +972,8 @@ mod tests {
     /// A video another program holds open without delete sharing (a media player, Explorer's
     /// preview) cannot be renamed: it keeps its name, its recording stays intact, and the next try
     /// renames it once it is closed. (The app's own media server shares delete, so playing a video
-    /// in the app never blocks this.)
+    /// in the app never blocks this.) Windows only: other systems do not lock open files.
+    #[cfg(windows)]
     #[test]
     fn a_file_in_use_waits() {
         let root = std::env::temp_dir().join(format!("mgr-names-{}", uuid::Uuid::new_v4().simple()));

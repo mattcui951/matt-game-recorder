@@ -34,10 +34,12 @@ uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 log = "0.4"
 dirs = "6"
-wasapi = "0.26"
 snap = "1"
 
-[dependencies.windows]
+[target.'cfg(windows)'.dependencies]
+wasapi = "0.26"
+
+[target.'cfg(windows)'.dependencies.windows]
 version = "0.62"
 features = [
   "Win32_Foundation",
@@ -59,6 +61,22 @@ features = [
   "Win32_UI_Shell_Common",
   "Win32_System_Com",
 ]
+
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = "0.2"
+cpal = "0.18"
+block2 = "0.6"
+dispatch2 = "0.3"
+objc2 = "0.6"
+objc2-foundation = "0.3"
+objc2-app-kit = "0.3"
+objc2-core-foundation = "0.3"
+objc2-core-graphics = "0.3"
+objc2-core-media = "0.3"
+objc2-core-video = "0.3"
+objc2-core-text = "0.3"
+objc2-core-audio-types = "0.3"
+objc2-screen-capture-kit = "0.3"
 
 [profile.release]
 codegen-units = 1

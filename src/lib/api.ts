@@ -1,9 +1,12 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { CpuAssist, Devices, DiskInfo, Job, OutplayedScan, Project, Recording, Settings, Snapshot, Status, UpdateState } from './types';
+import type { CpuAssist, Devices, DiskInfo, Job, OutplayedScan, Permissions, Platform, Project, Recording, Settings, Snapshot, Status, UpdateState } from './types';
 import type { Locale } from './i18n.svelte';
 
 export const api = {
-  bootstrap: () => invoke<{ settings: Settings; mediaUrl: string; version: string; status: Status; systemLanguage: Locale; update: UpdateState; updatedFrom: string | null }>('bootstrap'),
+  bootstrap: () => invoke<{ settings: Settings; mediaUrl: string; version: string; status: Status; systemLanguage: Locale; platform: Platform; update: UpdateState; updatedFrom: string | null }>('bootstrap'),
+  /** macOS privacy permissions; null on Windows. */
+  permissions: () => invoke<Permissions | null>('permissions'),
+  openPrivacySettings: (pane: 'screen' | 'input') => invoke<void>('open_privacy_settings', { pane }),
   saveSettings: (settings: Settings) => invoke<void>('save_settings', { settings }),
   systemFonts: () => invoke<string[]>('system_fonts'),
   readThemeFile: (path: string) => invoke<string>('read_theme_file', { path }),

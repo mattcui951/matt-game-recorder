@@ -1,16 +1,25 @@
 # Matt Game Recorder
 
-A local, ad-free League of Legends recorder for Windows: full-match or highlights capture,
+A local, ad-free League of Legends recorder for Windows and macOS: full-match or highlights capture,
 game-event timeline, APM, quick trim, instant supercut and a small video editor. English and
 Simplified Chinese.
 
 ## Install
 
-Download `Matt.Game.Recorder_*_x64-setup.exe` from the
+**Windows:** download `Matt.Game.Recorder_*_x64-setup.exe` from the
 [latest release](https://github.com/mattcui951/matt-game-recorder/releases/latest) and run it.
 The installer is not code-signed, so Windows may say "Windows protected your PC": click
 **More info**, then **Run anyway**. Recordings go to `Videos\Matt Game Recorder` until you pick
 another folder in Settings > Storage.
+
+**macOS (13 or later, Apple silicon or Intel):** download `Matt.Game.Recorder_*_universal.dmg`,
+open it and drag the app to Applications. Unless the release was signed with a Developer ID,
+macOS refuses to open it the first time: open System Settings > Privacy & Security and click
+**Open Anyway**. On first start it asks for Screen & System Audio Recording (needed to record);
+APM and the ultimate mark also need Input Monitoring, the microphone needs Microphone access.
+Settings > Capture shows which permissions are missing and opens the right System Settings page.
+Recordings go to `~/Movies/Matt Game Recorder`. With ad-hoc signing, macOS may ask for Screen
+Recording again after an update, because the app's signature changes with every build.
 
 ## Updates
 
@@ -25,6 +34,8 @@ Updates are verified: `latest.json` and the installer's signature are checked ag
 public key in `src-tauri/tauri.conf.json` before anything runs.
 
 ## How it works
+
+On Windows:
 
 - **Capture**: one `ffmpeg` process grabs the game window with Windows Graphics Capture
   (`gfxcapture`) and encodes it on the GPU (NVENC AV1 by default). Frames never leave the GPU,
@@ -41,6 +52,19 @@ public key in `src-tauri/tauri.conf.json` before anything runs.
   only while a match is recorded and only when the game window is focused.
 - **Library**: plain files in the media folder (`Videos\Matt Game Recorder` by default); every
   recording has a `.mgr.json` sidecar with events and APM. Copying the folder is a full backup.
+
+On macOS, events, files and the library work the same; capture, audio and input differ:
+
+- **Capture**: ScreenCaptureKit captures the game window (or a display) and scales it on the GPU.
+  NV12 frames go to ffmpeg through a FIFO, clocked by wall time like the audio (the latest frame
+  repeats while the screen is still), and VideoToolbox encodes them (HEVC by default). The
+  content filter leaves the recorder's own windows out of display recordings
+  (`src-tauri/src/capture/sck.rs`).
+- **Audio**: the system sound comes from a second ScreenCaptureKit stream (only the game when
+  "captures only the game" is on, otherwise every app but this one), the microphone through Core
+  Audio (cpal). The same Rust mixer feeds ffmpeg through a FIFO.
+- **Input**: a listen-only Quartz event tap (Input Monitoring permission) for APM and the
+  ultimate key. League's processes there are `LeagueofLegends` and `LeagueClientUx`.
 
 ## Importing
 
@@ -68,7 +92,17 @@ npm run tauri dev
 ```
 
 Requires Rust (MSVC), Node 20+, and `ffmpeg.exe` / `ffprobe.exe` (FFmpeg 8.x with `gfxcapture`)
-in `src-tauri/binaries/` (`ffplay.exe` too for the mock below).
+in `src-tauri/binaries/` (`ffplay.exe` too for the mock below). On macOS: the Xcode command line
+tools and `ffmpeg` / `ffprobe` in `src-tauri/binaries/` (the static builds release.yml pins).
+
+Platform code sits behind small modules with one file per OS: `platform/` (processes, windows,
+displays, disks, fonts, Finder/Explorer), `input/`, `capture/audio/`, plus `capture/sck.rs` and
+`capture/fifo.rs` on macOS. To type-check the macOS side on Windows:
+`rustup target add aarch64-apple-darwin`, placeholder files `binaries/ffmpeg` and
+`binaries/ffprobe` (careful: in Git Bash, `rm binaries/ffmpeg` also matches `ffmpeg.exe`), then
+`cargo check --target aarch64-apple-darwin` with `CC_aarch64_apple_darwin` and
+`AR_aarch64_apple_darwin` set to stand-in tools that write empty outputs (one build script
+compiles C; checking never links).
 
 ### Test without playing
 
@@ -83,7 +117,8 @@ Live Client API that plays a scripted match. The running app records it like a r
 
 With `npm run tauri dev` running, open
 `http://localhost:1430/?media=<contents of %APPDATA%\Matt Game Recorder\dev-media-url.txt>`.
-Reads come from the running app (debug builds only); edits are no-ops.
+Reads come from the running app (debug builds only); edits are no-ops. Add `&platform=macos`
+to see the macOS variant (title bar, permissions, Mac-only rows hidden).
 
 ## Build
 
@@ -91,7 +126,9 @@ Reads come from the running app (debug builds only); edits are no-ops.
 npm run tauri build
 ```
 
-Produces an NSIS installer in `src-tauri/target/release/bundle/nsis/`. Signing the updater
+Produces an NSIS installer in `src-tauri/target/release/bundle/nsis/`; on macOS an app and a
+`.dmg` under `bundle/` (releases build `--target universal-apple-darwin`). Per-platform bundle
+settings live in `tauri.windows.conf.json` and `tauri.macos.conf.json`. Signing the updater
 artifacts needs `TAURI_SIGNING_PRIVATE_KEY` (the key file's contents) and
 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` set; without them the installer still builds.
 
@@ -103,8 +140,9 @@ git push origin v0.3.0
 ```
 
 First bump `version` in `package.json`, `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json`.
-The tag starts `.github/workflows/release.yml`, which type-checks, runs the Rust tests, builds the
-installer, signs it, and publishes the release with `latest.json` (what installed apps read).
+The tag starts `.github/workflows/release.yml`: it drafts the release, then on Windows and macOS
+in parallel runs the tests and builds and signs the installer / universal app, checks that
+`latest.json` (what installed apps read) lists every platform, and only then publishes.
 The tag message becomes the release notes. The signing key lives outside the repository
 (`%USERPROFILE%\.tauri\matt-game-recorder.key`, with its password next to it) and as the
 `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` repository secrets. Losing it
@@ -113,7 +151,12 @@ means installed copies can no longer update themselves.
 FFmpeg is not in git (165 MB per file). The workflow downloads the pinned build from the
 `deps-ffmpeg` release of this repository and checks its SHA-256 (see `FFMPEG_SHA256` in the
 workflow). To change FFmpeg, upload a new zip of `ffmpeg.exe` and `ffprobe.exe` there and update
-the asset name and hash.
+the asset name and hash. The macOS builds come from ffmpeg.martin-riedl.de (`MAC_FFMPEG_*` in
+the workflow: one folder and two hashes per architecture).
+
+macOS signing is optional. Without the `APPLE_*` secrets listed at the top of release.yml the
+app is signed ad hoc; with a Developer ID certificate it is signed and notarized, so Gatekeeper
+opens it directly and permissions survive updates.
 
 ## Third-party software
 
@@ -121,4 +164,6 @@ The installer includes FFmpeg (`ffmpeg.exe`, `ffprobe.exe`) version n8.1.3-27-g8
 GPL v3 build by [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds) (2026-10-31). FFmpeg
 is free software licensed under the GPL; its source code is at
 [git.ffmpeg.org](https://git.ffmpeg.org/ffmpeg.git) (commit `8dca1586f4`) and the build scripts
-at BtbN/FFmpeg-Builds. Matt Game Recorder runs it as a separate program.
+at BtbN/FFmpeg-Builds. The macOS app includes FFmpeg 9.0.2 (`ffmpeg`, `ffprobe`), GPL v3 static
+builds by [Martin Riedl](https://ffmpeg.martin-riedl.de) for arm64 and x86_64, joined into one
+universal binary. Matt Game Recorder runs FFmpeg as a separate program.

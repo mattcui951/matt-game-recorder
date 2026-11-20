@@ -1,12 +1,8 @@
-//! Keyboard and mouse actions while a match is recorded, for APM and the ultimate-key mark,
-//! counted only while the game window is in the foreground.
-//!
 //! Raw Input, not low-level hooks: Windows sends this thread a copy of each input after the
 //! fact (RIDEV_INPUTSINK on a message-only window), so the recorder is never in the path from
 //! the mouse or keyboard to the game. With WH_*_LL hooks every key, click and mouse movement
 //! (about 1000 a second from a gaming mouse) went through the recorder before the game saw it.
 
-use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicU32, Ordering};
 use std::thread::JoinHandle;
 use windows::core::w;
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
@@ -21,31 +17,12 @@ use windows::Win32::UI::WindowsAndMessaging::{
     HWND_MESSAGE, MSG, WINDOW_EX_STYLE, WINDOW_STYLE, WM_INPUT, WM_KEYDOWN, WM_KEYUP, WM_QUIT, WM_SYSKEYDOWN, WM_SYSKEYUP, WNDCLASSW,
 };
 
-static ACTIONS: AtomicU32 = AtomicU32::new(0);
-static ULT_PRESSES: AtomicU32 = AtomicU32::new(0);
-static GAME_HWND: AtomicIsize = AtomicIsize::new(0);
-static ULT_VK: AtomicU32 = AtomicU32::new(0x52); // 'R'
-static KEY_DOWN: [AtomicBool; 256] = [const { AtomicBool::new(false) }; 256];
-
 /// Any mouse button pressed (left, right, middle, 4, 5).
 const BUTTON_DOWNS: u16 = 0x0001 | 0x0004 | 0x0010 | 0x0040 | 0x0100;
 
 fn game_focused() -> bool {
-    let g = GAME_HWND.load(Ordering::Relaxed);
+    let g = super::game_window();
     g != 0 && unsafe { GetForegroundWindow().0 as isize } == g
-}
-
-/// A key went down or up. Auto-repeat is ignored: only the first down of a held key counts.
-fn on_key(vk: usize, down: bool) {
-    let vk = vk & 0xff;
-    if !down {
-        KEY_DOWN[vk].store(false, Ordering::Relaxed);
-    } else if !KEY_DOWN[vk].swap(true, Ordering::Relaxed) && game_focused() {
-        ACTIONS.fetch_add(1, Ordering::Relaxed);
-        if vk as u32 == ULT_VK.load(Ordering::Relaxed) {
-            ULT_PRESSES.fetch_add(1, Ordering::Relaxed);
-        }
-    }
 }
 
 /// Count what one WM_INPUT carries.
@@ -59,15 +36,13 @@ unsafe fn on_raw_input(lparam: LPARAM) {
     if data.header.dwType == RIM_TYPEKEYBOARD.0 {
         let kb = data.data.keyboard;
         match kb.Message {
-            WM_KEYDOWN | WM_SYSKEYDOWN => on_key(kb.VKey as usize, true),
-            WM_KEYUP | WM_SYSKEYUP => on_key(kb.VKey as usize, false),
+            WM_KEYDOWN | WM_SYSKEYDOWN => super::on_key(kb.VKey as usize, true, game_focused),
+            WM_KEYUP | WM_SYSKEYUP => super::on_key(kb.VKey as usize, false, game_focused),
             _ => {}
         }
     } else if data.header.dwType == RIM_TYPEMOUSE.0 {
         let flags = data.data.mouse.Anonymous.Anonymous.usButtonFlags;
-        if flags & BUTTON_DOWNS != 0 && game_focused() {
-            ACTIONS.fetch_add((flags & BUTTON_DOWNS).count_ones(), Ordering::Relaxed);
-        }
+        super::on_clicks((flags & BUTTON_DOWNS).count_ones(), game_focused);
     }
 }
 
@@ -83,13 +58,8 @@ fn devices(hwnd: HWND, mouse: bool, remove: bool) -> Vec<RAWINPUTDEVICE> {
     usages.iter().map(|&usage| RAWINPUTDEVICE { usUsagePage: 0x01, usUsage: usage, dwFlags: flags, hwndTarget: target }).collect()
 }
 
-pub struct InputMonitor {
-    thread_id: u32,
-    handle: Option<JoinHandle<()>>,
-}
-
 /// Virtual-key code for a key name like "R", "Q", "1", "F5".
-pub fn vk_from_name(name: &str) -> u32 {
+pub fn key_from_name(name: &str) -> u32 {
     let n = name.trim().to_uppercase();
     if n.len() == 1 {
         let c = n.as_bytes()[0];
@@ -105,13 +75,13 @@ pub fn vk_from_name(name: &str) -> u32 {
     0x52
 }
 
-impl InputMonitor {
-    /// `apm`: count every key press and click; otherwise only the ultimate key is watched.
-    pub fn start(game_hwnd: isize, ult_key: &str, apm: bool) -> InputMonitor {
-        GAME_HWND.store(game_hwnd, Ordering::Relaxed);
-        ULT_VK.store(vk_from_name(ult_key), Ordering::Relaxed);
-        ACTIONS.store(0, Ordering::Relaxed);
-        ULT_PRESSES.store(0, Ordering::Relaxed);
+pub struct Hook {
+    thread_id: u32,
+    handle: Option<JoinHandle<()>>,
+}
+
+impl Hook {
+    pub fn start(apm: bool) -> Hook {
         let (tx, rx) = std::sync::mpsc::channel();
         let handle = std::thread::Builder::new()
             .name("input".into())
@@ -144,27 +114,12 @@ impl InputMonitor {
             })
             .ok();
         let thread_id = rx.recv().unwrap_or(0);
-        InputMonitor { thread_id, handle }
-    }
-
-    pub fn set_game_window(&self, hwnd: isize) {
-        GAME_HWND.store(hwnd, Ordering::Relaxed);
-    }
-
-    /// Actions since the last call.
-    pub fn take_actions(&self) -> u32 {
-        ACTIONS.swap(0, Ordering::Relaxed)
-    }
-
-    /// Ultimate-key presses since the last call.
-    pub fn take_ult_presses(&self) -> u32 {
-        ULT_PRESSES.swap(0, Ordering::Relaxed)
+        Hook { thread_id, handle }
     }
 }
 
-impl Drop for InputMonitor {
+impl Drop for Hook {
     fn drop(&mut self) {
-        GAME_HWND.store(0, Ordering::Relaxed);
         unsafe {
             let _ = PostThreadMessageW(self.thread_id, WM_QUIT, WPARAM(0), LPARAM(0));
         }

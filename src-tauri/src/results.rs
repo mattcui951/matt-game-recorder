@@ -16,7 +16,10 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+#[cfg(windows)]
 const CLIENT_EXES: [&str; 2] = ["LeagueClientUx.exe", "LeagueClient.exe"];
+#[cfg(target_os = "macos")]
+const CLIENT_EXES: [&str; 2] = ["LeagueClientUx", "LeagueClient"];
 /// How long a match newer than the whole history keeps being looked up.
 const WAIT_FOR_HISTORY: Duration = Duration::from_secs(20 * 60);
 /// A recording starts when the game process does, a little after the game is created; one
@@ -42,16 +45,16 @@ struct Lcu {
 }
 
 impl Lcu {
-    /// The port and password come from the `lockfile` the running client writes next to itself
-    /// (`LeagueClient:<pid>:<port>:<password>:https`).
+    /// The port and password come from the `lockfile` the running client writes in its install
+    /// folder (`LeagueClient:<pid>:<port>:<password>:https`): next to the exe on Windows, a few
+    /// folders up from it inside the app bundle on macOS (`League of Legends.app/Contents/LoL`).
     fn connect() -> Option<Self> {
-        let procs = crate::win::processes();
+        let procs = crate::platform::processes();
         let lockfile = CLIENT_EXES
             .iter()
-            .filter_map(|n| crate::win::find_process(&procs, n))
-            .filter_map(crate::win::process_path)
-            .filter_map(|exe| exe.parent().map(|d| d.join("lockfile")))
-            .find(|p| p.exists())?;
+            .filter_map(|n| crate::platform::find_process(&procs, n))
+            .filter_map(crate::platform::process_path)
+            .find_map(|exe| exe.ancestors().skip(1).take(8).map(|d| d.join("lockfile")).find(|p| p.exists()))?;
         let text = std::fs::read_to_string(lockfile).ok()?;
         let parts: Vec<&str> = text.trim().split(':').collect();
         let port: u16 = parts.get(2)?.parse().ok()?;
