@@ -1,15 +1,12 @@
 # Status
 
-Updated: 2026-11-20
-Version: 1.0.1, released 2026-11-19
+Updated: 2026-11-21
+Version: 1.1.0, released 2026-11-21 (first macOS release)
 
 ## In progress
 
-- macOS support lives on `mac-support` and has not been released. The universal app and DMG
-  built on Apple silicon, with both architectures in the app, FFmpeg and FFprobe. The app
-  launched and the DMG checksum verified. The app and both media tools pass code signature
-  verification with Matt Game Recorder's dedicated Developer ID Application certificate.
-  Apple notarization and the signed release workflow still need an end-to-end run.
+- 1.1.0 is the first release with macOS (universal DMG, Developer ID signed and notarized by
+  the release workflow). Check the release run's notarization and the Mac updater path.
 
 ## Unverified
 
@@ -32,6 +29,10 @@ Version: 1.0.1, released 2026-11-19
   because the game is still encoded into a memory buffer to have the seconds before each event.
 
 ## Known issues
+
+- `tools/mock_lol.py` on Windows (2026-11-21): window capture gets no frames from the mock
+  window ("hw_frames_ctx must be set" / 15 frames), in both 1.0.1 and 1.1.0. Real matches
+  record fine. The mock or its window needs a fix before it is useful again.
 
 - Black stretches inside a real match (seen 11-15 Match 01, about 19%) happen while the champion
   stands in the fountain, so most likely the player was tabbed out of fullscreen League. A
