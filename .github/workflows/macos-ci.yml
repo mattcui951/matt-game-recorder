@@ -1,0 +1,87 @@
+name: macOS CI
+
+on:
+  push:
+    branches: [main, mac-support]
+  pull_request:
+    branches: [main, mac-support]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos:
+    name: macOS (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-15
+          - arch: x86_64
+            runner: macos-15-intel
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: macos-ci-${{ matrix.arch }}
+
+      - name: Prepare universal FFmpeg tools
+        run: bash .github/scripts/prepare-macos-ffmpeg.sh
+
+      - run: npm ci
+      - run: npm run check
+      - run: cargo test --locked --manifest-path src-tauri/Cargo.toml --lib
+      - run: cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+
+      - name: Build universal test DMG
+        if: matrix.arch == 'arm64'
+        # Normal CI does not need Developer ID or the updater private key.
+        run: npm run tauri -- build --target universal-apple-darwin --config '{"bundle":{"createUpdaterArtifacts":false,"macOS":{"signingIdentity":"-"}}}' -- --locked
+
+      - name: Verify packaged app and media tools
+        if: matrix.arch == 'arm64'
+        run: |
+          set -euo pipefail
+          bundle=src-tauri/target/universal-apple-darwin/release/bundle
+          app="$bundle/macos/Matt Game Recorder.app"
+          executable=$(/usr/libexec/PlistBuddy -c 'Print CFBundleExecutable' "$app/Contents/Info.plist")
+          lipo -verify_arch arm64 x86_64 "$app/Contents/MacOS/$executable"
+          for tool in ffmpeg ffprobe; do
+            lipo -verify_arch arm64 x86_64 "$app/Contents/Resources/$tool"
+            "$app/Contents/Resources/$tool" -version
+          done
+          codesign --verify --deep --strict --verbose=2 "$app"
+          for dmg in "$bundle"/dmg/*.dmg; do
+            hdiutil verify "$dmg"
+          done
+
+      - uses: actions/upload-artifact@v4
+        if: matrix.arch == 'arm64'
+        with:
+          name: macos-universal-test-dmg
+          path: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14

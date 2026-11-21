@@ -74,10 +74,6 @@ jobs:
 
   macos:
     runs-on: macos-latest
-    env:
-      MAC_FFMPEG_URL: https://ffmpeg.martin-riedl.de/download/macos/arm64/1789931890_9.0.2
-      MAC_FFMPEG_SHA256: c8ed4c4e6978a03c485edbfe4e0a5dc2380f8a30bba5150531b31b094492d924
-      MAC_FFPROBE_SHA256: fcbe839537485eaee7a7a8bc5cbc0f90d53617e80943e8a5b2e31cb851197ea6
     steps:
       - uses: actions/checkout@v5
 
@@ -91,19 +87,9 @@ jobs:
           workspaces: src-tauri
           shared-key: release-macos
 
-      # The build checks that the bundled resources exist; the tests run it. One architecture
-      # is enough here (release.yml joins both).
-      - name: FFmpeg (pinned build)
+      - name: Prepare universal FFmpeg tools
         if: steps.cache.outputs.cache-hit != 'true'
-        run: |
-          set -euo pipefail
-          mkdir -p src-tauri/binaries
-          for tool in ffmpeg ffprobe; do
-            sha_var=$(echo "MAC_${tool}_SHA256" | tr a-z A-Z)
-            curl -fsSL --retry 3 -o "$RUNNER_TEMP/$tool.zip" "$MAC_FFMPEG_URL/$tool.zip"
-            echo "${!sha_var}  $RUNNER_TEMP/$tool.zip" | shasum -a 256 --check
-            unzip -o -q "$RUNNER_TEMP/$tool.zip" -d src-tauri/binaries
-          done
+        run: bash .github/scripts/prepare-macos-ffmpeg.sh
 
       - uses: actions/setup-node@v5
         if: steps.cache.outputs.cache-hit != 'true'
