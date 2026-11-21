@@ -29,8 +29,10 @@ pub struct Bootstrap {
     media_url: String,
     version: String,
     status: crate::core::Status,
-    /// The Windows display language as a UI language code, for `general.language` = "system".
+    /// The system display language as a UI language code, for `general.language` = "system".
     system_language: &'static str,
+    /// "windows" or "macos".
+    platform: &'static str,
     update: crate::update::UpdateState,
     /// The version this install was just updated from (first start after an update only).
     updated_from: Option<String>,
@@ -44,6 +46,7 @@ pub fn bootstrap(core: Core_) -> Bootstrap {
         version: env!("CARGO_PKG_VERSION").into(),
         status: core.status.read().clone(),
         system_language: crate::i18n::resolve("system"),
+        platform: crate::platform::NAME,
         update: crate::update::state(),
         updated_from: crate::update::updated_from(),
     }
@@ -88,7 +91,7 @@ pub fn save_settings(core: Core_, settings: Settings) -> Res<()> {
 pub struct Devices {
     audio: crate::capture::audio::AudioDevices,
     webcams: Vec<String>,
-    monitors: Vec<crate::win::Monitor>,
+    monitors: Vec<crate::platform::Monitor>,
     encoders: Vec<ffmpeg::EncoderInfo>,
 }
 
@@ -98,7 +101,7 @@ pub async fn list_devices() -> Res<Devices> {
         Ok(Devices {
             audio: crate::capture::audio::list_devices(),
             webcams: crate::capture::list_webcams(),
-            monitors: crate::win::monitors(),
+            monitors: crate::platform::monitors(),
             encoders: ffmpeg::encoders().to_vec(),
         })
     })
@@ -199,18 +202,56 @@ pub fn empty_recently_deleted(core: Core_) -> Res<()> {
     purge(&core, ids)
 }
 
+/// macOS privacy permissions the recorder depends on; `None` where there are none to grant.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Permissions {
+    screen: bool,
+    input: bool,
+}
+
+#[tauri::command]
+pub fn permissions() -> Option<Permissions> {
+    #[cfg(target_os = "macos")]
+    return Some(Permissions { screen: crate::platform::screen_capture_allowed(), input: crate::platform::input_monitoring_allowed() });
+    #[cfg(not(target_os = "macos"))]
+    None
+}
+
+/// Ask for a permission (macOS shows its prompt the first time) and open its System Settings page.
+#[tauri::command]
+pub fn open_privacy_settings(pane: String) -> Res<()> {
+    #[cfg(target_os = "macos")]
+    {
+        match pane.as_str() {
+            "screen" => {
+                crate::platform::request_screen_capture();
+            }
+            "input" => {
+                crate::platform::request_input_monitoring();
+            }
+            _ => {}
+        }
+        crate::platform::open_privacy_settings(&pane).map_err(e)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = pane;
+        Ok(())
+    }
+}
+
 #[tauri::command]
 pub fn reveal_recording(core: Core_, id: String) -> Res<()> {
     let r = core.library.recording(&id).ok_or_else(crate::i18n::recording_not_found)?;
-    crate::win::reveal_in_explorer(&r.path()).map_err(e)
+    crate::platform::reveal_in_file_manager(&r.path()).map_err(e)
 }
 
 #[tauri::command]
 pub fn open_media_folder(core: Core_) -> Res<()> {
     let root = core.library.root();
     std::fs::create_dir_all(&root).map_err(e)?;
-    crate::win::hidden_command("explorer.exe").arg(root).spawn().map_err(e)?;
-    Ok(())
+    crate::platform::open_folder(&root).map_err(e)
 }
 
 #[derive(Serialize)]
@@ -225,7 +266,7 @@ pub struct DiskInfo {
 
 #[tauri::command]
 pub fn disk_info(core: Core_) -> DiskInfo {
-    let (free, total) = crate::win::disk_space(&core.library.root()).unwrap_or((0, 0));
+    let (free, total) = crate::platform::disk_space(&core.library.root()).unwrap_or((0, 0));
     const GB: u64 = 1024 * 1024 * 1024;
     let level = if free < 10 * GB { "critical" } else if free < 50 * GB || (total > 0 && free * 10 < total) { "low" } else { "good" };
     DiskInfo { free, total, library: core.library.total_size(), level: level.into() }
@@ -627,7 +668,7 @@ pub fn list_jobs(core: Core_) -> Vec<crate::jobs::JobUpdate> {
 #[tauri::command]
 pub async fn system_fonts() -> Vec<String> {
     static FONTS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
-    tauri::async_runtime::spawn_blocking(|| FONTS.get_or_init(crate::win::font_families).clone()).await.unwrap_or_default()
+    tauri::async_runtime::spawn_blocking(|| FONTS.get_or_init(crate::platform::font_families).clone()).await.unwrap_or_default()
 }
 
 const THEME_FILE_MAX: u64 = 256 * 1024;

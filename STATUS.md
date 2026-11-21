@@ -1,13 +1,22 @@
 # Status
 
-Updated: 2026-11-19
+Updated: 2026-11-20
 Version: 1.0.1, released 2026-11-19
 
 ## In progress
 
-- Nothing open.
+- macOS support lives on `mac-support` and has not been released. The universal app and DMG
+  built on Apple silicon, with both architectures in the app, FFmpeg and FFprobe. The app
+  launched and the DMG checksum verified. The app and both media tools pass code signature
+  verification with Matt Game Recorder's dedicated Developer ID Application certificate.
+  Apple notarization and the signed release workflow still need an end-to-end run.
 
 ## Unverified
+
+- macOS: a live League match in fullscreen and windowed modes, the real client's lockfile,
+  game-only audio, dedicated mic and webcam tests, APM events and the ultimate hotkey, Dock reopen,
+  screenshots, Discord, the updater, and running the universal package on Intel. The final
+  ad-hoc package needs its own screen permission grant for a full recording smoke test.
 
 - Aatrox key fix: unit-tested only; check his icon on the next Aatrox match. 3 older matches (11-05 Match 04, 11-07 Match 04 and 07) keep kill events naming "Name", champion unknown
 - 0.4.1 full screen player: controls lie over the video and fade when the pointer rests, also
@@ -35,6 +44,13 @@ Version: 1.0.1, released 2026-11-19
   under HKCU CapabilityAccessManager: `LastUsedTimeStop` 0 means a capture is running now.
 
 ## Recently done
+
+- macOS on Apple silicon: a mock League match exercised game-window capture, VideoToolbox,
+  saving, event bookmarks and in-app playback. Also checked interrupted recording recovery,
+  display capture, ring-buffer clips, trim, supercut and vertical export. Fixed dropped
+  ScreenCaptureKit audio buffers and verified an audible test tone and a native CoreMedia
+  regression test. Automatic permission checks now stay silent and failed starts back off.
+  Svelte checks, 24 Rust tests and Clippy for all targets passed.
 
 - Full UI test pass (Playwright on the browser preview, 1100-1600 px, zh/ru/es, light theme), fixes:
   library toolbar fits the 1100 px minimum window in every language (tabs never wrap; Supercut,

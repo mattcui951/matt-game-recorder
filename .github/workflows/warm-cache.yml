@@ -71,3 +71,38 @@ jobs:
         run: |
           cargo test --manifest-path src-tauri/Cargo.toml --lib --no-run
           npx tauri build --no-bundle
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        id: cache
+        with:
+          workspaces: src-tauri
+          shared-key: release-macos
+
+      - name: Prepare universal FFmpeg tools
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: bash .github/scripts/prepare-macos-ffmpeg.sh
+
+      - uses: actions/setup-node@v5
+        if: steps.cache.outputs.cache-hit != 'true'
+        with:
+          node-version: 22
+          cache: npm
+
+      - if: steps.cache.outputs.cache-hit != 'true'
+        run: npm ci
+
+      # The same compiles as release.yml: its tests, then the universal release build.
+      - name: Build what a release builds
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          cargo test --manifest-path src-tauri/Cargo.toml --lib --no-run
+          npx tauri build --no-bundle --target universal-apple-darwin

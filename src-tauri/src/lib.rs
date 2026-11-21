@@ -19,8 +19,8 @@ pub mod paths;
 mod results;
 pub mod update;
 pub mod settings;
+pub mod platform;
 pub mod supercut;
-pub mod win;
 
 use std::io::Write;
 use tauri::menu::{Menu, MenuBuilder};
@@ -129,7 +129,7 @@ pub fn run() {
                 Err(e) => log::error!("media server: {e:#}"),
             }
 
-            // Keep the Windows startup entry pointing at this exe (it moves when the app is
+            // Keep the startup entry (Windows registry, macOS login item) pointing at this exe (it moves when the app is
             // reinstalled or updated). Dev builds never touch it.
             #[cfg(not(debug_assertions))]
             {
@@ -140,10 +140,27 @@ pub fn run() {
                     log::warn!("could not update start-with-Windows entry: {e}");
                 }
             }
-            if !settings::Settings::path().exists() {
+            let first_start = !settings::Settings::path().exists();
+            if first_start {
                 let _ = core.settings().save();
             }
+            // macOS asks once for Screen Recording; ask on the first start, not in the first game.
+            #[cfg(target_os = "macos")]
+            if first_start && !platform::screen_capture_allowed() {
+                platform::request_screen_capture();
+            }
 
+            #[cfg(target_os = "macos")]
+            {
+                app.set_menu(app_menu(app.handle())?)?;
+                app.on_menu_event(|_app, event| {
+                    if event.id() == "app-quit" {
+                        if let Some(core) = core::get() {
+                            core.quit();
+                        }
+                    }
+                });
+            }
             let menu = tray_menu(app.handle())?;
             TrayIconBuilder::with_id("tray")
                 .icon(app.default_window_icon().cloned().expect("icon"))
@@ -261,19 +278,67 @@ pub fn run() {
             commands::write_theme_file,
             commands::set_import_cpu_assist,
             commands::delete_sessions,
+            commands::permissions,
+            commands::open_privacy_settings,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Matt Game Recorder");
 
-    app.run(|_app, event| {
+    app.run(|_app, event| match event {
         // Closing every window keeps the recorder running in the tray; only Quit exits.
-        if let RunEvent::ExitRequested { api, code, .. } = event {
+        RunEvent::ExitRequested { api, code, .. } => {
             let quitting = core::get().is_some_and(|c| c.is_quitting());
             if code.is_none() && !quitting {
                 api.prevent_exit();
             }
         }
+        // macOS: clicking the Dock icon brings the window back.
+        #[cfg(target_os = "macos")]
+        RunEvent::Reopen { .. } => {
+            if let Some(core) = core::get() {
+                core.show_main();
+            }
+        }
+        _ => {}
     });
+}
+
+/// macOS: the menu bar. The standard Edit menu makes copy and paste work in text fields; Quit
+/// (Cmd+Q) goes through the app's own quit, which saves a recording in progress first.
+#[cfg(target_os = "macos")]
+fn app_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
+    use tauri::menu::{MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
+    let quit = MenuItemBuilder::with_id("app-quit", tr!("Quit Matt Game Recorder",
+        zh: "退出 Matt Game Recorder", tw: "結束 Matt Game Recorder",
+        es: "Salir de Matt Game Recorder", fr: "Quitter Matt Game Recorder",
+        ja: "Matt Game Recorder を終了", ko: "Matt Game Recorder 종료", ru: "Выйти из Matt Game Recorder"))
+    .accelerator("CmdOrCtrl+Q")
+    .build(app)?;
+    let app_sub = SubmenuBuilder::new(app, "Matt Game Recorder")
+        .item(&PredefinedMenuItem::about(app, None, None)?)
+        .separator()
+        .item(&PredefinedMenuItem::hide(app, None)?)
+        .item(&PredefinedMenuItem::hide_others(app, None)?)
+        .item(&PredefinedMenuItem::show_all(app, None)?)
+        .separator()
+        .item(&quit)
+        .build()?;
+    let edit = SubmenuBuilder::new(app, tr!("Edit", zh: "编辑", tw: "編輯", es: "Edición", fr: "Édition", ja: "編集", ko: "편집", ru: "Правка"))
+        .undo()
+        .redo()
+        .separator()
+        .cut()
+        .copy()
+        .paste()
+        .select_all()
+        .build()?;
+    let window = SubmenuBuilder::new(app, tr!("Window", zh: "窗口", tw: "視窗", es: "Ventana", fr: "Fenêtre", ja: "ウインドウ", ko: "윈도우", ru: "Окно"))
+        .minimize()
+        .item(&PredefinedMenuItem::maximize(app, None)?)
+        .separator()
+        .close_window()
+        .build()?;
+    MenuBuilder::new(app).items(&[&app_sub, &edit, &window]).build()
 }
 
 /// The tray icon's menu, in the current language.

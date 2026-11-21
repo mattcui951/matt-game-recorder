@@ -21,13 +21,13 @@ fn main() -> anyhow::Result<()> {
     let cancel = AtomicBool::new(false);
     let seg = |a: f64, b: f64, crop: &str| Segment { file: input.clone(), start: a, end: b, volume: 100.0, crop: crop.into() };
     for (name, w, h, enc, segs) in [
-        ("supercut.mp4", probe.width, probe.height, "av1_nvenc", vec![seg(18.0, 27.0, "fit"), seg(35.0, 42.0, "fit")]),
-        ("export_9x16.mp4", 1080, 1920, "h264_nvenc", vec![seg(20.0, 26.0, "fill"), seg(60.0, 64.0, "fit")]),
+        ("supercut.mp4", probe.width, probe.height, ffmpeg::best_encoder("av1_nvenc"), vec![seg(18.0, 27.0, "fit"), seg(35.0, 42.0, "fit")]),
+        ("export_9x16.mp4", 1080, 1920, ffmpeg::best_encoder("h264_nvenc"), vec![seg(20.0, 26.0, "fill"), seg(60.0, 64.0, "fit")]),
     ] {
         let t = Instant::now();
         let mut last = 0.0;
         ffmpeg::render(
-            &RenderSpec { segments: segs, width: w, height: h, fps: 60, encoder: enc.into(), bitrate_kbps: 8000, master_volume: 100.0, watermark: name.contains("export"), output: out.join(name) },
+            &RenderSpec { segments: segs, width: w, height: h, fps: 60, encoder: enc, bitrate_kbps: 8000, master_volume: 100.0, watermark: name.contains("export"), output: out.join(name) },
             &cancel,
             |p| last = p,
         )?;

@@ -1,11 +1,14 @@
 // Dev-only: lets the UI run in a plain browser tab for visual checks.
 // Open http://localhost:1430/?media=<url from %APPDATA%/Matt Game Recorder/dev-media-url.txt>
 // Reads come from the running app's debug-only JSON endpoints; writes are no-ops.
+// Add &platform=macos to see the macOS variant of the UI.
 import { emit } from '@tauri-apps/api/event';
 import { mockIPC, mockWindows } from '@tauri-apps/api/mocks';
 import { version } from '../../package.json';
 
-const media = new URLSearchParams(location.search).get('media') ?? '';
+const params = new URLSearchParams(location.search);
+const media = params.get('media') ?? '';
+const platform = params.get('platform') === 'macos' ? 'macos' : 'windows';
 const dev = (what: string) => fetch(`${media}dev/${what}`).then((r) => r.json());
 const idleUpdate = { phase: 'idle', version: null, progress: null, error: null, checkedAt: null };
 
@@ -15,7 +18,9 @@ mockIPC(
     const a = (args ?? {}) as Record<string, unknown>;
     switch (cmd) {
       case 'bootstrap':
-        return { settings: await dev('settings'), mediaUrl: media, version, status: await dev('status'), systemLanguage: 'en', update: idleUpdate, updatedFrom: null };
+        return { settings: await dev('settings'), mediaUrl: media, version, status: await dev('status'), systemLanguage: 'en', platform, update: idleUpdate, updatedFrom: null };
+      case 'permissions':
+        return platform === 'macos' ? { screen: true, input: false } : null;
       case 'check_update':
         return idleUpdate;
       case 'import_cpu_assist':

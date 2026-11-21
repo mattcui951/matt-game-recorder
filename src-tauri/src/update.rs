@@ -75,7 +75,7 @@ fn busy() -> bool {
 /// would cut a recording short.
 pub fn blocked(core: &Core) -> Option<String> {
     let state = core.status.read().state.clone();
-    let game = crate::win::find_process(&crate::win::processes(), crate::game::GAME_EXE).is_some();
+    let game = crate::platform::find_process(&crate::platform::processes(), crate::game::GAME_EXE).is_some();
     (game || state == "recording" || state == "saving").then(|| tr!("Update after your game: installing closes the app and would stop the recording.",
         zh: "请在游戏结束后更新：安装会关闭应用并中断录制。", tw: "請在遊戲結束後更新：安裝會關閉應用程式並中斷錄製。",
         es: "Actualiza después de la partida: instalar cierra la app y detendría la grabación.", fr: "Mettez à jour après votre partie : l'installation ferme l'app et arrêterait l'enregistrement.",

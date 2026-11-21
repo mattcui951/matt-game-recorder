@@ -36,7 +36,7 @@ pub fn lang() -> Lang {
 pub fn resolve(language: &str) -> &'static str {
     match CODES.iter().find(|c| **c == language) {
         Some(c) => c,
-        None => CODES[windows_language() as usize],
+        None => CODES[system_language() as usize],
     }
 }
 
@@ -44,8 +44,33 @@ fn from_code(code: &str) -> Lang {
     CODES.iter().position(|c| *c == code).map_or(Lang::En, |i| ALL[i])
 }
 
+/// The macOS language (the first preferred language), when the app has it.
+#[cfg(target_os = "macos")]
+fn system_language() -> Lang {
+    let first = objc2_foundation::NSLocale::preferredLanguages().firstObject().map(|l| l.to_string()).unwrap_or_default();
+    from_tag(&first)
+}
+
+/// A BCP 47 tag ("zh-Hant-HK", "fr-CA", "en") as one of the app's languages.
+#[cfg_attr(windows, allow(dead_code))]
+fn from_tag(tag: &str) -> Lang {
+    let parts: Vec<String> = tag.split(['-', '_']).map(str::to_ascii_lowercase).collect();
+    let has = |p: &str| parts.iter().skip(1).any(|x| x == p);
+    match parts.first().map(String::as_str).unwrap_or("") {
+        "zh" if has("hant") || ((has("tw") || has("hk") || has("mo")) && !has("hans")) => Lang::ZhTw,
+        "zh" => Lang::ZhCn,
+        "es" => Lang::Es,
+        "fr" => Lang::Fr,
+        "ja" => Lang::Ja,
+        "ko" => Lang::Ko,
+        "ru" => Lang::Ru,
+        _ => Lang::En,
+    }
+}
+
 /// The Windows display language, when the app has it.
-fn windows_language() -> Lang {
+#[cfg(windows)]
+fn system_language() -> Lang {
     use windows::Win32::Globalization::GetUserDefaultUILanguage;
     let id = unsafe { GetUserDefaultUILanguage() };
     // A LANGID is a primary language (low 10 bits) and a sublanguage (high 6 bits).
@@ -184,6 +209,26 @@ mod tests {
         for code in CODES {
             assert_eq!(resolve(code), code);
             assert_eq!(CODES[from_code(code) as usize], code);
+        }
+    }
+
+    #[test]
+    fn macos_language_tags() {
+        for (tag, want) in [
+            ("zh-Hans-CN", Lang::ZhCn),
+            ("zh-Hant-TW", Lang::ZhTw),
+            ("zh-HK", Lang::ZhTw),
+            ("zh-Hans-HK", Lang::ZhCn),
+            ("zh-CN", Lang::ZhCn),
+            ("fr-CA", Lang::Fr),
+            ("ja", Lang::Ja),
+            ("ko-KR", Lang::Ko),
+            ("ru-RU", Lang::Ru),
+            ("es-419", Lang::Es),
+            ("de-DE", Lang::En),
+            ("", Lang::En),
+        ] {
+            assert_eq!(from_tag(tag) as u8, want as u8, "{tag}");
         }
     }
 }

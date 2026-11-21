@@ -9,15 +9,22 @@ use crate::input::InputMonitor;
 use crate::library::{RecEvent, Session};
 use crate::lol::{GameEvent, LiveClient, MatchTracker};
 use crate::settings::{GameSettings, Settings};
-use crate::win;
+use crate::platform;
 use std::sync::mpsc::{channel, RecvTimeoutError};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tauri::Emitter;
 
 pub const LOL_GAME: &str = "League of Legends";
+/// The game process (in a match) and the client process (lobby, champion select).
+#[cfg(windows)]
 pub const GAME_EXE: &str = "League of Legends.exe";
+#[cfg(windows)]
 const CLIENT_EXE: &str = "LeagueClientUx.exe";
+#[cfg(target_os = "macos")]
+pub const GAME_EXE: &str = "LeagueofLegends";
+#[cfg(target_os = "macos")]
+const CLIENT_EXE: &str = "LeagueClientUx";
 const SCREEN_GAME: &str = "Screen recorder";
 
 pub enum Cmd {
@@ -73,6 +80,7 @@ pub fn spawn(core: Arc<Core>) {
             let mut screen: Option<ScreenSession> = None;
             let mut last_tick = Instant::now() - Duration::from_secs(5);
             let mut housekeeping_at = Instant::now();
+            let mut retry_start: Option<(u32, Instant)> = None;
             loop {
                 let wait = Duration::from_millis(1000).saturating_sub(last_tick.elapsed());
                 match rx.recv_timeout(wait) {
@@ -89,6 +97,7 @@ pub fn spawn(core: Arc<Core>) {
                     Ok(Cmd::Hotkey(h)) => handle_hotkey(&core, h, &mut active, &mut screen),
                     Ok(Cmd::ToggleScreenRecorder) => toggle_screen(&core, &mut screen),
                     Ok(Cmd::SettingsChanged) => {
+                        retry_start = None;
                         if let Some(m) = active.as_mut() {
                             m.gs = core.settings().games.lol;
                         }
@@ -99,7 +108,7 @@ pub fn spawn(core: Arc<Core>) {
                     continue;
                 }
                 last_tick = Instant::now();
-                tick(&core, &live, &mut active, &mut screen);
+                tick(&core, &live, &mut active, &mut screen, &mut retry_start);
                 if housekeeping_at.elapsed() > Duration::from_secs(1800) {
                     housekeeping_at = Instant::now();
                     core.housekeeping();
@@ -118,13 +127,13 @@ fn set_status(core: &Core, f: impl FnOnce(&mut crate::core::Status)) {
 /// after the end screen; this keeps that tail from starting a second recording.
 static FINISHED_GAME_PID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
-fn tick(core: &Arc<Core>, live: &LiveClient, active: &mut Option<MatchSession>, screen: &mut Option<ScreenSession>) {
+fn tick(core: &Arc<Core>, live: &LiveClient, active: &mut Option<MatchSession>, screen: &mut Option<ScreenSession>, retry_start: &mut Option<(u32, Instant)>) {
     use std::sync::atomic::Ordering;
     let settings = core.settings();
     let gs = settings.games.lol.clone();
-    let procs = win::processes();
-    let game_pid = win::find_process(&procs, GAME_EXE);
-    let client_pid = win::find_process(&procs, CLIENT_EXE);
+    let procs = platform::processes();
+    let game_pid = platform::find_process(&procs, GAME_EXE);
+    let client_pid = platform::find_process(&procs, CLIENT_EXE);
     let finished = FINISHED_GAME_PID.load(Ordering::Relaxed);
     if finished != 0 && game_pid != Some(finished) {
         FINISHED_GAME_PID.store(0, Ordering::Relaxed);
@@ -147,10 +156,17 @@ fn tick(core: &Arc<Core>, live: &LiveClient, active: &mut Option<MatchSession>, 
             let target_pid = if session_mode { client_pid.or(game_pid) } else { game_pid.filter(|_| !game_already_saved) };
             if gs.enabled {
                 if let Some(pid) = target_pid {
+                    if retry_start.is_some_and(|(failed_pid, at)| failed_pid == pid && at.elapsed() < Duration::from_secs(10)) {
+                        return;
+                    }
                     match start_match(core, &settings, pid, game_pid, session_mode) {
-                        Ok(Some(m)) => *active = Some(m),
+                        Ok(Some(m)) => {
+                            *retry_start = None;
+                            *active = Some(m);
+                        }
                         Ok(None) => set_status(core, |s| s.state = "waiting".into()),
                         Err(e) => {
+                            *retry_start = Some((pid, Instant::now()));
                             log::error!("could not start recording: {e:#}");
                             set_status(core, |s| {
                                 s.state = "error".into();
@@ -196,7 +212,7 @@ fn tick(core: &Arc<Core>, live: &LiveClient, active: &mut Option<MatchSession>, 
                     m.tracker = MatchTracker::default();
                     m.tracker_pid = Some(pid);
                     m.offset = None;
-                    if let Some(h) = win::main_window_of(pid, Some("RiotWindowClass")) {
+                    if let Some(h) = platform::main_window_of(pid, Some("RiotWindowClass")) {
                         if let Some(inp) = &m.input {
                             inp.set_game_window(h);
                         }
@@ -335,11 +351,11 @@ fn audio_config(settings: &Settings, game_pid: Option<u32>) -> AudioConfig {
 fn start_match(core: &Arc<Core>, settings: &Settings, pid: u32, game_pid: Option<u32>, session_mode: bool) -> anyhow::Result<Option<MatchSession>> {
     let gs = settings.games.lol.clone();
     let class = if session_mode && game_pid != Some(pid) { None } else { Some("RiotWindowClass") };
-    let Some(hwnd) = win::main_window_of(pid, class).or_else(|| win::main_window_of(pid, None)) else { return Ok(None) };
-    if win::is_minimized(hwnd) {
+    let Some(hwnd) = platform::main_window_of(pid, class).or_else(|| platform::main_window_of(pid, None)) else { return Ok(None) };
+    if platform::is_minimized(hwnd) {
         return Ok(None);
     }
-    let Some((ww, wh)) = win::window_size(hwnd) else { return Ok(None) };
+    let Some((ww, wh)) = platform::window_size(hwnd) else { return Ok(None) };
     // League creates its window tiny and resizes it while loading; size the capture from the real one.
     if !session_mode && (ww < 640 || wh < 360) {
         return Ok(None);
@@ -352,8 +368,8 @@ fn start_match(core: &Arc<Core>, settings: &Settings, pid: u32, game_pid: Option
     let session = core.library.create_session(LOL_GAME, &title, &mode)?;
 
     let (target, (size, stretch)) = if session_mode {
-        let mon = win::monitor_of_window(hwnd);
-        let m = win::monitors().into_iter().find(|m| m.handle == mon);
+        let mon = platform::monitor_of_window(hwnd);
+        let m = platform::monitors().into_iter().find(|m| m.handle == mon);
         let (mw, mh) = m.map(|m| (m.width, m.height)).unwrap_or((ww, wh));
         (Target::Monitor(mon), output_size(settings, mw, mh, &encoder))
     } else {
@@ -374,6 +390,7 @@ fn start_match(core: &Arc<Core>, settings: &Settings, pid: u32, game_pid: Option
         stretch,
         cursor: gs.capture_cursor,
         border: false,
+        exclude_self: !settings.general.capture_own_windows,
         encoder,
         encoder_preset: settings.video.encoder_preset.clone(),
         bitrate_kbps: settings.video.bitrate_kbps,
@@ -386,7 +403,7 @@ fn start_match(core: &Arc<Core>, settings: &Settings, pid: u32, game_pid: Option
     let needs_input = gs.collect_apm || gs.event_enabled("ultimate");
     let input = needs_input.then(|| InputMonitor::start(hwnd, &gs.hotkeys.ultimate_key, gs.collect_apm));
     core.register_hotkeys(true);
-    if gs.dashboard_on_secondary && win::monitors().len() > 1 {
+    if gs.dashboard_on_secondary && platform::monitors().len() > 1 {
         core.open_dashboard(hwnd);
     }
     let n = &settings.notifications;
@@ -736,7 +753,7 @@ fn toggle_screen(core: &Arc<Core>, screen: &mut Option<ScreenSession>) {
     }
     let settings = core.settings();
     let sr = &settings.screen_recorder;
-    let monitors = win::monitors();
+    let monitors = platform::monitors();
     let Some(mon) = monitors.get(sr.display as usize).or_else(|| monitors.first()).cloned() else { return };
     let encoder = crate::ffmpeg::best_encoder(&settings.video.encoder);
     let (size, stretch) = output_size(&settings, mon.width, mon.height, &encoder);
@@ -750,6 +767,7 @@ fn toggle_screen(core: &Arc<Core>, screen: &mut Option<ScreenSession>) {
             stretch,
             cursor: sr.capture_cursor,
             border: sr.show_border,
+            exclude_self: false,
             encoder,
             encoder_preset: settings.video.encoder_preset.clone(),
             bitrate_kbps: settings.video.bitrate_kbps,

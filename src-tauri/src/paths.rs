@@ -32,15 +32,15 @@ fn find_tool(name: &str) -> PathBuf {
 
 pub fn ffmpeg() -> &'static Path {
     static P: OnceLock<PathBuf> = OnceLock::new();
-    P.get_or_init(|| find_tool("ffmpeg.exe"))
+    P.get_or_init(|| find_tool(&format!("ffmpeg{}", std::env::consts::EXE_SUFFIX)))
 }
 
 pub fn ffprobe() -> &'static Path {
     static P: OnceLock<PathBuf> = OnceLock::new();
-    P.get_or_init(|| find_tool("ffprobe.exe"))
+    P.get_or_init(|| find_tool(&format!("ffprobe{}", std::env::consts::EXE_SUFFIX)))
 }
 
-/// Make a string safe to use as a Windows file name.
+/// Make a string safe to use as a file name (on Windows, the strictest of the two systems).
 pub fn sanitize(name: &str) -> String {
     let cleaned: String = name
         .chars()

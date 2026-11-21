@@ -8,12 +8,12 @@
   import Slider from '../components/Slider.svelte';
   import Toggle from '../components/Toggle.svelte';
   import { api } from '../lib/api';
-  import { app, checkUpdate, errorText, go, installUpdate, releaseUrl, setLanguage, toast, updateBlocked, updateSettings } from '../lib/state.svelte';
+  import { app, checkUpdate, errorText, go, installUpdate, osName, releaseUrl, setLanguage, toast, updateBlocked, updateSettings } from '../lib/state.svelte';
   import { openUrl } from '@tauri-apps/plugin-opener';
   import { meta, SETTING_KINDS } from '../lib/events';
   import { bytes, gameName } from '../lib/format.svelte';
   import { i18n, intlLocale, LANGUAGES, languageName, t } from '../lib/i18n.svelte';
-  import type { Devices, Settings } from '../lib/types';
+  import type { Devices, Permissions, Settings } from '../lib/types';
 
   let { page }: { page: string } = $props();
   const s = $derived(app.settings!);
@@ -28,6 +28,19 @@
     if (!devices && (page === 'capture' || page === 'screen')) {
       api.listDevices().then((d) => (devices = d)).catch((e) => (devicesError = errorText(e)));
     }
+  });
+
+  const mac = $derived(app.platform === 'macos');
+
+  // macOS: what the recorder may do. Read again when the window comes back to the front, which
+  // is how the user returns from System Settings after allowing something.
+  let perms = $state<Permissions | null>(null);
+  const readPerms = () => api.permissions().then((p) => (perms = p)).catch(() => {});
+  $effect(() => {
+    if (!mac || page !== 'capture') return;
+    readPerms();
+    window.addEventListener('focus', readPerms);
+    return () => window.removeEventListener('focus', readPerms);
   });
 
   const NAV = [
@@ -156,6 +169,19 @@
       {@const W = t.settings.webcam}
       <h1>{C.title}</h1>
       <p class="lead">{C.lead}</p>
+      {#if mac && perms}
+        <section class="sec">
+          <h2>{C.permissions}</h2>
+          {#each [{ pane: 'screen' as const, label: C.permScreen, hint: C.permScreenHint, ok: perms.screen }, { pane: 'input' as const, label: C.permInput, hint: C.permInputHint, ok: perms.input }] as p (p.pane)}
+            <div class="row"><span>{p.label}<small>{p.hint}</small></span>
+              <div class="perm">
+                <span class="perm-state" class:ok={p.ok}><i></i>{p.ok ? C.permAllowed : C.permMissing}</span>
+                {#if !p.ok}<button class="btn sm" onclick={() => api.openPrivacySettings(p.pane).catch((e) => toast(errorText(e), 'error'))}>{C.permOpen}</button>{/if}
+              </div>
+            </div>
+          {/each}
+        </section>
+      {/if}
       <section class="sec">
         <div class="row"><span>{C.ownWindows}</span><Toggle label={C.ownWindows} checked={s.general.captureOwnWindows} onchange={(v) => set((x) => (x.general.captureOwnWindows = v))} /></div>
         <div class="row"><span>{C.notifications}</span><Toggle label={C.notifications} checked={s.general.captureNotifications} onchange={(v) => set((x) => (x.general.captureNotifications = v))} /></div>
@@ -164,7 +190,7 @@
           <div class="row sub"><span>{C.discordId}<small>{C.discordIdHint}</small></span><input class="field id" value={s.general.discordAppId} placeholder={C.discordIdPlaceholder} aria-label={C.discordId} onchange={(e) => set((x) => (x.general.discordAppId = (e.currentTarget as HTMLInputElement).value.trim()))} /></div>
         {/if}
         <div class="row"><span>{C.watermark}</span><Toggle label={C.watermark} checked={s.general.watermark} onchange={(v) => set((x) => (x.general.watermark = v))} /></div>
-        <div class="row"><span>{C.startWithWindows}<small>{C.startWithWindowsHint}</small></span><Toggle label={C.startWithWindows} checked={s.general.startWithWindows} onchange={(v) => set((x) => (x.general.startWithWindows = v))} /></div>
+        <div class="row"><span>{C.startWithWindows(osName())}<small>{C.startWithWindowsHint}</small></span><Toggle label={C.startWithWindows(osName())} checked={s.general.startWithWindows} onchange={(v) => set((x) => (x.general.startWithWindows = v))} /></div>
       </section>
 
       <section class="sec">
@@ -208,9 +234,12 @@
         <h2>{A.title}</h2>
         {#if devicesError}<p class="note err">{A.devicesError(devicesError)}</p>{/if}
         <div class="row"><span>{A.system}</span><Toggle label={A.system} checked={s.audio.systemEnabled} onchange={(v) => set((x) => (x.audio.systemEnabled = v))} /></div>
-        <div class="row" class:off={!s.audio.systemEnabled}><span>{A.output}</span>
-          <div class="ctl"><Select label={A.output} disabled={!s.audio.systemEnabled} value={s.audio.systemDevice} onchange={(v) => set((x) => (x.audio.systemDevice = v))} options={[{ value: 'default', label: A.systemDefault }, ...(devices?.audio.outputs ?? []).map((d) => ({ value: d.id, label: d.name }))]} /></div>
-        </div>
+        <!-- macOS records what the Mac plays, whichever output it plays on. -->
+        {#if !mac}
+          <div class="row" class:off={!s.audio.systemEnabled}><span>{A.output}</span>
+            <div class="ctl"><Select label={A.output} disabled={!s.audio.systemEnabled} value={s.audio.systemDevice} onchange={(v) => set((x) => (x.audio.systemDevice = v))} options={[{ value: 'default', label: A.systemDefault }, ...(devices?.audio.outputs ?? []).map((d) => ({ value: d.id, label: d.name }))]} /></div>
+          </div>
+        {/if}
         <div class="row" class:off={!s.audio.systemEnabled}><span>{A.volume}</span><div class="ctl"><Slider label={A.systemVolume} disabled={!s.audio.systemEnabled} value={s.audio.systemVolume} onchange={(v) => set((x) => (x.audio.systemVolume = v))} /></div></div>
         <div class="row gap"><span>{A.mic}</span><Toggle label={A.mic} checked={s.audio.micEnabled} onchange={(v) => set((x) => (x.audio.micEnabled = v))} /></div>
         <div class="row" class:off={!s.audio.micEnabled}><span>{A.input}</span>
@@ -240,7 +269,10 @@
       <p class="lead">{R.lead}</p>
       <section class="sec">
         <div class="row"><span>{R.cursor}</span><Toggle label={R.cursor} checked={s.screenRecorder.captureCursor} onchange={(v) => set((x) => (x.screenRecorder.captureCursor = v))} /></div>
-        <div class="row"><span>{R.border}<small>{R.borderHint}</small></span><Toggle label={R.border} checked={s.screenRecorder.showBorder} onchange={(v) => set((x) => (x.screenRecorder.showBorder = v))} /></div>
+        <!-- The capture border is a Windows feature; macOS marks recording in the menu bar itself. -->
+        {#if !mac}
+          <div class="row"><span>{R.border}<small>{R.borderHint}</small></span><Toggle label={R.border} checked={s.screenRecorder.showBorder} onchange={(v) => set((x) => (x.screenRecorder.showBorder = v))} /></div>
+        {/if}
         <div class="row"><span>{R.display}</span>
           <div class="ctl"><Select label={R.display} value={s.screenRecorder.display} onchange={(v) => set((x) => (x.screenRecorder.display = v))} options={(devices?.monitors ?? []).map((m) => ({ value: m.index, label: R.displayName(m.index + 1, m.width, m.height, m.primary) }))} /></div>
         </div>
@@ -315,7 +347,7 @@
       <section class="sec">
         <div class="cards3" role="radiogroup" aria-label={L.title}>
           <button class="mcard" role="radio" aria-checked={s.general.language === 'system'} class:on={s.general.language === 'system'} onclick={() => setLanguage('system')}>
-            <span class="radio"></span><strong>{L.system}</strong><small>{L.systemHint(languageName(i18n.system))}</small>
+            <span class="radio"></span><strong>{L.system(osName())}</strong><small>{L.systemHint(languageName(i18n.system), osName())}</small>
           </button>
           {#each LANGUAGES as l (l.value)}
             <button class="mcard" role="radio" aria-checked={s.general.language === l.value} class:on={s.general.language === l.value} onclick={() => setLanguage(l.value)}>
@@ -348,7 +380,7 @@
     {:else if page === 'notifications'}
       {@const N = t.settings.notifications}
       <h1>{N.title}</h1>
-      <p class="lead">{N.lead}</p>
+      <p class="lead">{N.lead(osName())}</p>
       <section class="sec">
         {#each NOTIFY as k (k)}
           <div class="row"><span>{N[k]}</span><Toggle label={N[k]} checked={s.notifications[k]} onchange={(v) => set((x) => (x.notifications[k] = v))} /></div>
@@ -563,6 +595,27 @@
   }
   .cards3 {
     grid-template-columns: repeat(3, 1fr);
+  }
+  .perm {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .perm-state {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    color: var(--text-2);
+    font-size: 13px;
+  }
+  .perm-state i {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--death);
+  }
+  .perm-state.ok i {
+    background: var(--win);
   }
   .upd-line {
     position: relative;

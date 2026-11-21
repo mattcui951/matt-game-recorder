@@ -1,11 +1,20 @@
-# Builds the Windows installer and publishes it as a GitHub Release when a version tag is pushed.
-# The annotated tag's message becomes the release notes:
+# Builds the Windows installer and the macOS app and publishes them as one GitHub Release when a
+# version tag is pushed. The annotated tag's message becomes the release notes:
 #   git tag -a v0.3.0 -m "What changed" && git push origin v0.3.0
-# The release also carries latest.json and the installer's signature, which installed apps read
-# to offer the update (needs the TAURI_SIGNING_PRIVATE_KEY and _PASSWORD repository secrets).
+# The release also carries latest.json and each build's signature, which installed apps read to
+# offer the update (needs the TAURI_SIGNING_PRIVATE_KEY and _PASSWORD repository secrets).
 #
-# FFmpeg is too large for git: the pinned build is an asset of the "deps-ffmpeg" release in this
-# repository and is checked against its SHA-256 before it goes into the installer.
+# The release stays a draft until both builds are attached and latest.json lists every platform,
+# so "latest" keeps pointing at the previous release meanwhile: downloads and update checks never
+# see a half-built one.
+#
+# FFmpeg is too large for git. Windows: the pinned build is an asset of the "deps-ffmpeg" release
+# in this repository. macOS: the pinned static builds from ffmpeg.martin-riedl.de (one per
+# architecture, joined into one universal binary). Each is checked against its SHA-256.
+#
+# macOS releases require APPLE_CERTIFICATE (base64 .p12), APPLE_CERTIFICATE_PASSWORD,
+# APPLE_SIGNING_IDENTITY, APPLE_ID, APPLE_PASSWORD (app-specific) and APPLE_TEAM_ID.
+# The app is signed with Developer ID and notarized before the release can publish.
 name: Release
 
 on:
@@ -20,22 +29,38 @@ env:
   FFMPEG_SHA256: a8b70ead7d7840d38a4e8dba12cb47e87536d412b4f93dc424c27ea36943e3d7
 
 jobs:
-  windows:
-    runs-on: windows-latest
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      id: ${{ steps.draft.outputs.id }}
     steps:
       - uses: actions/checkout@v5
 
-      - name: Release notes from the tag message
-        id: notes
-        shell: bash
+      - name: Draft release with the tag message as notes
+        id: draft
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           git fetch --depth=1 origin "+refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"
-          notes=$(git tag -l --format='%(contents)' "$GITHUB_REF_NAME")
           {
-            echo 'text<<NOTES_EOF'
-            echo "$notes"
-            echo 'NOTES_EOF'
-          } >> "$GITHUB_OUTPUT"
+            git tag -l --format='%(contents)' "$GITHUB_REF_NAME"
+            cat <<'EOF'
+
+          **Windows:** download `Matt.Game.Recorder_*_x64-setup.exe` below and run it. Windows may say "Windows protected your PC" because the installer is not code-signed: click **More info**, then **Run anyway**. Needs Windows 10 or 11.
+          **macOS:** download `Matt.Game.Recorder_*_universal.dmg`, open it and drag the app to Applications. Needs macOS 13 or later. The app is signed and notarized. Allow Screen & System Audio Recording when macOS asks.
+          Already have Matt Game Recorder? It offers this update by itself. Records League of Legends automatically; the screen recorder works with anything.
+          EOF
+          } > "$RUNNER_TEMP/notes.md"
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft \
+            --title "Matt Game Recorder $GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md"
+          id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.tag_name == \"$GITHUB_REF_NAME\" and .draft) | .id" | head -1)
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+
+  windows:
+    needs: create-release
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
 
       - name: FFmpeg (pinned build)
         shell: bash
@@ -69,27 +94,119 @@ jobs:
           npx svelte-check --tsconfig ./tsconfig.json
           cargo test --manifest-path src-tauri/Cargo.toml --lib
 
-      - name: Build installer and publish the release
+      - name: Build the installer and attach it
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: Matt Game Recorder ${{ github.ref_name }}
-          releaseBody: |
-            ${{ steps.notes.outputs.text }}
+          releaseId: ${{ needs.create-release.outputs.id }}
 
-            **Install:** download `Matt.Game.Recorder_*_x64-setup.exe` below and run it. Already have Matt Game Recorder? It offers this update by itself.
-            Windows may say "Windows protected your PC" because the installer is not code-signed: click **More info**, then **Run anyway**.
-            Needs Windows 10 or 11. Records League of Legends automatically; the screen recorder works with anything.
-          # A draft until every file is attached: "latest" keeps pointing at the previous
-          # release meanwhile, so downloads and update checks never see a half-built one.
-          releaseDraft: true
-          prerelease: false
+  macos:
+    needs: create-release
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Prepare universal FFmpeg tools
+        run: bash .github/scripts/prepare-macos-ffmpeg.sh
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          shared-key: release-macos
+          save-if: false
+
+      - run: npm ci
+
+      - name: Test
+        run: cargo test --manifest-path src-tauri/Cargo.toml --lib
+
+      - name: Prepare Developer ID signing
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          # A missing or expired credential must stop a release rather than ship an ad-hoc build.
+          for v in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!v}" ]; then
+              echo "::error::Missing required macOS release secret: $v"
+              exit 1
+            fi
+            { echo "$v<<APPLE_EOF"; echo "${!v}"; echo "APPLE_EOF"; } >> "$GITHUB_ENV"
+          done
+          case "$APPLE_SIGNING_IDENTITY" in
+            "Developer ID Application:"*) ;;
+            *) echo "::error::Use a Developer ID Application identity for macOS releases"; exit 1 ;;
+          esac
+          # The bundler signs the app's own binary, not executables among the resources, and
+          # notarization rejects any executable that lacks a Developer ID signature with the
+          # hardened runtime. So FFmpeg is signed here, with the same entitlements (it opens the
+          # webcam itself).
+          keychain="$RUNNER_TEMP/ffmpeg-signing.keychain-db"
+          security create-keychain -p ci "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p ci "$keychain"
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$keychain" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k ci "$keychain"
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/cert.p12"
+          for tool in ffmpeg ffprobe; do
+            codesign --force --options runtime --timestamp --entitlements src-tauri/Entitlements.plist \
+              --sign "$APPLE_SIGNING_IDENTITY" --keychain "$keychain" "src-tauri/binaries/$tool"
+          done
+          codesign --verify --strict --verbose=2 src-tauri/binaries/ffmpeg
+
+      - name: Build the app and attach it
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          releaseId: ${{ needs.create-release.outputs.id }}
+          args: --target universal-apple-darwin
+
+      - name: Verify Developer ID signature and notarization ticket
+        run: |
+          set -euo pipefail
+          app="src-tauri/target/universal-apple-darwin/release/bundle/macos/Matt Game Recorder.app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign --display --verbose=4 "$app" 2>&1 | grep -Fx "TeamIdentifier=$APPLE_TEAM_ID"
+          xcrun stapler validate "$app"
+
+  publish:
+    needs: [create-release, windows, macos]
+    runs-on: ubuntu-latest
+    steps:
+      # Both builds add their platform to latest.json; if they ever raced and one entry was lost,
+      # stop here with the release still a draft.
+      - name: Check latest.json lists every platform
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --pattern latest.json --dir "$RUNNER_TEMP"
+          jq -e '.platforms | has("windows-x86_64") and has("darwin-aarch64") and has("darwin-x86_64")' "$RUNNER_TEMP/latest.json"
+          jq '.platforms | keys' "$RUNNER_TEMP/latest.json"
 
       - name: Publish the release
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release edit "${{ github.ref_name }}" --repo "${{ github.repository }}" --draft=false --latest
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest
