@@ -13,9 +13,8 @@ The installer is not code-signed, so Windows may say "Windows protected your PC"
 another folder in Settings > Storage.
 
 **macOS (13 or later, Apple silicon or Intel):** download `Matt.Game.Recorder_*_universal.dmg`,
-open it and drag the app to Applications. Unless the release was signed with a Developer ID,
-macOS refuses to open it the first time: open System Settings > Privacy & Security and click
-**Open Anyway**. On first start it asks for Screen & System Audio Recording (needed to record);
+open it and drag the app to Applications. Releases are signed with Developer ID and notarized
+by Apple. On first start it asks for Screen & System Audio Recording (needed to record);
 APM and the ultimate mark also need Input Monitoring, the microphone needs Microphone access.
 Settings > Capture shows which permissions are missing and opens the right System Settings page.
 Recordings go to `~/Movies/Matt Game Recorder`. With ad-hoc signing, macOS may ask for Screen
@@ -177,9 +176,9 @@ workflow). To change FFmpeg, upload a new zip of `ffmpeg.exe` and `ffprobe.exe` 
 the asset name and hash. The macOS builds come from ffmpeg.martin-riedl.de (`MAC_FFMPEG_*` in
 the workflow: one folder and two hashes per architecture).
 
-macOS signing is optional. Without the `APPLE_*` secrets listed at the top of release.yml the
-app is signed ad hoc; with a Developer ID certificate it is signed and notarized, so Gatekeeper
-opens it directly and permissions survive updates.
+Local builds can use ad-hoc signing. GitHub releases require the `APPLE_*` secrets listed at
+the top of release.yml. The workflow verifies the app's Developer ID signature and stapled
+notarization ticket before publishing.
 
 ## Third-party software
 

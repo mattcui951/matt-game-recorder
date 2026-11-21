@@ -12,10 +12,9 @@
 # in this repository. macOS: the pinned static builds from ffmpeg.martin-riedl.de (one per
 # architecture, joined into one universal binary). Each is checked against its SHA-256.
 #
-# macOS signing: without Apple secrets the app is signed ad hoc (it runs, but Gatekeeper asks
-# the user to allow it once). With APPLE_CERTIFICATE (base64 .p12), APPLE_CERTIFICATE_PASSWORD,
-# APPLE_SIGNING_IDENTITY, APPLE_ID, APPLE_PASSWORD (app-specific) and APPLE_TEAM_ID set, it is
-# signed with that Developer ID and notarized.
+# macOS releases require APPLE_CERTIFICATE (base64 .p12), APPLE_CERTIFICATE_PASSWORD,
+# APPLE_SIGNING_IDENTITY, APPLE_ID, APPLE_PASSWORD (app-specific) and APPLE_TEAM_ID.
+# The app is signed with Developer ID and notarized before the release can publish.
 name: Release
 
 on:
@@ -55,7 +54,7 @@ jobs:
             cat <<'EOF'
 
           **Windows:** download `Matt.Game.Recorder_*_x64-setup.exe` below and run it. Windows may say "Windows protected your PC" because the installer is not code-signed: click **More info**, then **Run anyway**. Needs Windows 10 or 11.
-          **macOS:** download `Matt.Game.Recorder_*_universal.dmg`, open it and drag the app to Applications. The first time, macOS may refuse to open it because it is not from an identified developer: open **System Settings > Privacy & Security** and click **Open Anyway**. Needs macOS 13 or later; allow Screen & System Audio Recording when asked.
+          **macOS:** download `Matt.Game.Recorder_*_universal.dmg`, open it and drag the app to Applications. Needs macOS 13 or later. The app is signed and notarized. Allow Screen & System Audio Recording when macOS asks.
           Already have Matt Game Recorder? It offers this update by itself. Records League of Legends automatically; the screen recorder works with anything.
           EOF
           } > "$RUNNER_TEMP/notes.md"
@@ -160,7 +159,7 @@ jobs:
       - name: Test
         run: cargo test --manifest-path src-tauri/Cargo.toml --lib
 
-      - name: Apple signing (only when the secrets are set)
+      - name: Prepare Developer ID signing
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -169,14 +168,19 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          # The bundler treats a variable that is set but empty as a certificate to import, so
-          # only pass on the ones that have values.
+          set -euo pipefail
+          # A missing or expired credential must stop a release rather than ship an ad-hoc build.
           for v in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
-            if [ -n "${!v}" ]; then
-              { echo "$v<<APPLE_EOF"; echo "${!v}"; echo "APPLE_EOF"; } >> "$GITHUB_ENV"
+            if [ -z "${!v}" ]; then
+              echo "::error::Missing required macOS release secret: $v"
+              exit 1
             fi
+            { echo "$v<<APPLE_EOF"; echo "${!v}"; echo "APPLE_EOF"; } >> "$GITHUB_ENV"
           done
-          [ -n "$APPLE_CERTIFICATE" ] || exit 0
+          case "$APPLE_SIGNING_IDENTITY" in
+            "Developer ID Application:"*) ;;
+            *) echo "::error::Use a Developer ID Application identity for macOS releases"; exit 1 ;;
+          esac
           # The bundler signs the app's own binary, not executables among the resources, and
           # notarization rejects any executable that lacks a Developer ID signature with the
           # hardened runtime. So FFmpeg is signed here, with the same entitlements (it opens the
@@ -205,6 +209,14 @@ jobs:
         with:
           releaseId: ${{ needs.create-release.outputs.id }}
           args: --target universal-apple-darwin
+
+      - name: Verify Developer ID signature and notarization ticket
+        run: |
+          set -euo pipefail
+          app="src-tauri/target/universal-apple-darwin/release/bundle/macos/Matt Game Recorder.app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign --display --verbose=4 "$app" 2>&1 | grep -Fx "TeamIdentifier=$APPLE_TEAM_ID"
+          xcrun stapler validate "$app"
 
   publish:
     needs: [create-release, windows, macos]

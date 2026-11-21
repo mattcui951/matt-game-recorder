@@ -7,8 +7,9 @@ Version: 1.0.1, released 2026-11-19
 
 - macOS support lives on `mac-support` and has not been released. The universal app and DMG
   built on Apple silicon, with both architectures in the app, FFmpeg and FFprobe. The app
-  launched and the DMG checksum verified. Developer ID signing and notarization await the
-  Apple Developer Team's Account Holder, who must create the distribution certificate.
+  launched and the DMG checksum verified. The app and both media tools pass code signature
+  verification with Matt Game Recorder's dedicated Developer ID Application certificate.
+  Apple notarization and the signed release workflow still need an end-to-end run.
 
 ## Unverified
 
