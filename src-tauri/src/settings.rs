@@ -91,7 +91,7 @@ impl Default for Video {
             fps: 60,
             force_16_9: false,
             crop_mode: "fit".into(),
-            encoder: "av1_nvenc".into(),
+            encoder: if cfg!(target_os = "macos") { "hevc_videotoolbox" } else { "av1_nvenc" }.into(),
             encoder_preset: "default".into(),
             buffer: "ram".into(),
         }

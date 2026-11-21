@@ -1,25 +1,21 @@
 # Status
 
-Updated: 2026-11-19
+Updated: 2026-11-20
 Version: 1.0.1, released 2026-11-19
 
 ## In progress
 
-- macOS support (uncommitted, not released). Code complete; type-checks and lints clean for
-  `aarch64-apple-darwin` (cross-checked from Windows), Windows build and 24 tests unchanged and
-  passing. Never built, bundled or run on a Mac. Next: push a branch and run the macOS CI build
-  (warm-cache.yml's macos job or a test tag), then test on a real Mac with League.
+- macOS support lives on `mac-support` and has not been released. The universal app and DMG
+  built on Apple silicon, with both architectures in the app, FFmpeg and FFprobe. The app
+  launched and the DMG checksum verified. Developer ID signing and notarization await the
+  Apple Developer Team's Account Holder, who must create the distribution certificate.
 
 ## Unverified
 
-- macOS, all of it, on real hardware: ScreenCaptureKit window capture of League (fullscreen and
-  windowed), game-only audio (`LeagueofLegends` process name and the LCU lockfile search are from
-  memory of the Mac install layout), mic via cpal, VideoToolbox encode settings, event-tap APM,
-  traffic-light position over the 40px title bar (`traffic_light_position(14, 20)`), Cmd+Q menu,
-  Dock reopen, webcam via AVFoundation, `screencapture` screenshots, Discord socket, updater on
-  macOS, dmg layout, release.yml's create-release / publish jobs (first run on the next tag).
-- With ad-hoc signing, macOS likely asks for Screen Recording again after each update; a
-  Developer ID certificate (APPLE_* secrets) would fix it.
+- macOS: a live League match in fullscreen and windowed modes, the real client's lockfile,
+  game-only audio, dedicated mic and webcam tests, APM events and the ultimate hotkey, Dock reopen,
+  screenshots, Discord, the updater, and running the universal package on Intel. The final
+  ad-hoc package needs its own screen permission grant for a full recording smoke test.
 
 - Aatrox key fix: unit-tested only; check his icon on the next Aatrox match. 3 older matches (11-05 Match 04, 11-07 Match 04 and 07) keep kill events naming "Name", champion unknown
 - 0.4.1 full screen player: controls lie over the video and fade when the pointer rests, also
@@ -47,6 +43,13 @@ Version: 1.0.1, released 2026-11-19
   under HKCU CapabilityAccessManager: `LastUsedTimeStop` 0 means a capture is running now.
 
 ## Recently done
+
+- macOS on Apple silicon: a mock League match exercised game-window capture, VideoToolbox,
+  saving, event bookmarks and in-app playback. Also checked interrupted recording recovery,
+  display capture, ring-buffer clips, trim, supercut and vertical export. Fixed dropped
+  ScreenCaptureKit audio buffers and verified an audible test tone and a native CoreMedia
+  regression test. Automatic permission checks now stay silent and failed starts back off.
+  Svelte checks, 24 Rust tests and Clippy for all targets passed.
 
 - Full UI test pass (Playwright on the browser preview, 1100-1600 px, zh/ru/es, light theme), fixes:
   library toolbar fits the 1100 px minimum window in every language (tabs never wrap; Supercut,

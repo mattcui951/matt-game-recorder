@@ -24,8 +24,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-FFPLAY = ROOT.parent / "src-tauri" / "binaries" / "ffplay.exe"
-OPENSSL = Path(r"C:\Program Files\Git\usr\bin\openssl.exe")
+IS_MAC = sys.platform == "darwin"
+FFPLAY = ROOT.parent / "src-tauri" / "binaries" / ("ffplay" if IS_MAC else "ffplay.exe")
+OPENSSL = Path(shutil.which("openssl") or r"C:\Program Files\Git\usr\bin\openssl.exe")
 
 ME = {"riotId": "MattTest#NA1", "riotIdGameName": "MattTest", "summonerName": "MattTest"}
 ALLY = "AllyBuddy"
@@ -135,7 +136,7 @@ def main():
 
     work = Path(tempfile.mkdtemp(prefix="mock-lol-"))
     cert, key = ensure_cert(work)
-    exe = work / "League of Legends.exe"
+    exe = work / ("LeagueofLegends" if IS_MAC else "League of Legends.exe")
     shutil.copy(FFPLAY, exe)
 
     # The overlay shows wall-clock time, so a frame at an event mark can be checked against

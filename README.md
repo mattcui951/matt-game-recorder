@@ -113,6 +113,29 @@ py -I tools/mock_lol.py --length 90
 Starts a stand-in "League of Legends.exe" window with moving video and a tone, and a fake
 Live Client API that plays a scripted match. The running app records it like a real game.
 
+On macOS, put the matching `ffplay` executable next to `ffmpeg` in `src-tauri/binaries/`,
+then run `python3 tools/mock_lol.py --length 90`. The stand-in process is named
+`LeagueofLegends`; OpenSSL is found on PATH. Allow the recorder's Screen & System Audio
+Recording permission in Settings > Capture before starting. Automatic retries check access
+silently; the permission button is what opens the system prompt.
+
+Native checks on either platform:
+
+```bash
+npm run check
+cargo test --manifest-path src-tauri/Cargo.toml --lib
+cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+cargo run --manifest-path src-tauri/Cargo.toml --example capture_test -- /tmp/mgr-capture 15
+cargo run --manifest-path src-tauri/Cargo.toml --example editing_test -- recording.mp4 /tmp/mgr-editing
+```
+
+The capture example records the primary display and tests ring-buffer extraction; the editing
+example needs a recording longer than 64 seconds. Both choose an available platform encoder.
+On macOS, a development build signed ad hoc changes identity on rebuild and may invalidate its
+privacy grants. For repeated local testing, set `APPLE_SIGNING_IDENTITY` to an installed
+Apple Development or Developer ID Application identity when bundling. Public downloads need
+Developer ID Application signing and notarization.
+
 ### Preview the UI in a browser
 
 With `npm run tauri dev` running, open
