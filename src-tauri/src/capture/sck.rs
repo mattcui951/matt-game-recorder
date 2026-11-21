@@ -171,6 +171,7 @@ struct BufferList {
     buffers: [AudioBuffer; 8],
 }
 
+
 fn on_audio(shared: &Shared, sample: &CMSampleBuffer) {
     let Some(AudioSink { ring, resampler }) = &shared.audio else { return };
     let Some(desc) = (unsafe { sample.format_description() }) else { return };
@@ -190,11 +191,25 @@ fn on_audio(shared: &Shared, sample: &CMSampleBuffer) {
     let channels = asbd.mChannelsPerFrame.max(1) as usize;
     let mut list = BufferList { count: 0, buffers: [AudioBuffer { mNumberChannels: 0, mDataByteSize: 0, mData: std::ptr::null_mut() }; 8] };
     let mut block: *mut CMBlockBuffer = std::ptr::null_mut();
+    let mut needed = 0;
+    // Ask CoreMedia for the exact list size. Passing the capacity of our larger stack buffer
+    // returns ArrayTooSmall on macOS 26 even when a stereo list only needs 40 bytes.
     let status = unsafe {
         sample.audio_buffer_list_with_retained_block_buffer(
-            std::ptr::null_mut(),
+            &mut needed, std::ptr::null_mut(), 0, None, None, 0, std::ptr::null_mut(),
+        )
+    };
+    if status != 0 || needed > std::mem::size_of::<BufferList>() || needed < std::mem::size_of::<AudioBufferList>() {
+        if !shared.warned.swap(true, Ordering::Relaxed) {
+            log::warn!("cannot size system audio buffers: status {status}, size {needed}");
+        }
+        return;
+    }
+    let status = unsafe {
+        sample.audio_buffer_list_with_retained_block_buffer(
+            &mut needed,
             (&mut list as *mut BufferList).cast::<AudioBufferList>(),
-            std::mem::size_of::<BufferList>(),
+            needed,
             None,
             None,
             kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment,
@@ -202,6 +217,9 @@ fn on_audio(shared: &Shared, sample: &CMSampleBuffer) {
         )
     };
     if status != 0 || block.is_null() {
+        if !shared.warned.swap(true, Ordering::Relaxed) {
+            log::warn!("cannot read system audio buffers: status {status}");
+        }
         return;
     }
     // Owns the sample memory until we are done reading it.
@@ -243,6 +261,12 @@ unsafe impl Send for Content {}
 
 /// Windows, displays and apps that can be captured. Fails without Screen Recording permission.
 fn shareable_content() -> Result<Retained<SCShareableContent>> {
+    // The game loop retries automatically. Querying ScreenCaptureKit while access is denied
+    // can show another system prompt on every retry. Preflight here is silent and notices
+    // a new grant on the next attempt.
+    if !crate::platform::screen_capture_allowed() {
+        bail!(permission_hint("Screen Recording permission is required"));
+    }
     let (tx, rx) = channel::<Result<Content, String>>();
     let block = RcBlock::new(move |content: *mut SCShareableContent, error: *mut NSError| {
         let result = match unsafe { Retained::retain(content) } {
@@ -524,4 +548,43 @@ pub fn screenshot(source: Source, output: &std::path::Path) -> Result<()> {
         bail!("{}", String::from_utf8_lossy(&out.stderr).trim());
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use objc2_core_audio_types::AudioStreamBasicDescription;
+    use objc2_core_media::{CMAudioFormatDescriptionCreate, CMAudioSampleBufferCreateWithPacketDescriptions};
+    use std::ptr::{null, null_mut, NonNull};
+
+    // Real CoreMedia buffers, no recording permission or audio device required. This catches
+    // silent sample loss in the native buffer-list API, not just the Rust interleaving logic.
+    #[test]
+    fn coremedia_planar_stereo_reaches_the_mixer() {
+        unsafe {
+            let mut asbd = AudioStreamBasicDescription {
+                mSampleRate: 48_000.0, mFormatID: u32::from_be_bytes(*b"lpcm"),
+                mFormatFlags: 1 | 8 | 32, mBytesPerPacket: 4, mFramesPerPacket: 1,
+                mBytesPerFrame: 4, mChannelsPerFrame: 2, mBitsPerChannel: 32, mReserved: 0,
+            };
+            let mut desc = null();
+            assert_eq!(CMAudioFormatDescriptionCreate(None, NonNull::from(&mut asbd), 0, null(), 0, null(), None, NonNull::from(&mut desc)), 0);
+            let desc = CFRetained::from_raw(NonNull::new(desc.cast_mut()).unwrap());
+            let mut sample = null_mut();
+            assert_eq!(CMAudioSampleBufferCreateWithPacketDescriptions(None, None, false, None, null_mut(), &desc, 4,
+                CMTime { value: 0, timescale: 48_000, flags: CMTimeFlags::Valid, epoch: 0 }, null(), NonNull::from(&mut sample)), 0);
+            let sample = CFRetained::from_raw(NonNull::new(sample).unwrap());
+            let mut left = [0.1f32, 0.2, 0.3, 0.4];
+            let mut right = [-0.1f32, -0.2, -0.3, -0.4];
+            let mut list = BufferList { count: 2, buffers: [AudioBuffer { mNumberChannels: 0, mDataByteSize: 0, mData: null_mut() }; 8] };
+            list.buffers[0] = AudioBuffer { mNumberChannels: 1, mDataByteSize: 16, mData: left.as_mut_ptr().cast() };
+            list.buffers[1] = AudioBuffer { mNumberChannels: 1, mDataByteSize: 16, mData: right.as_mut_ptr().cast() };
+            assert_eq!(sample.set_data_buffer_from_audio_buffer_list(None, None, 0, NonNull::from(&mut list).cast()), 0);
+            assert_eq!(sample.set_data_ready(), 0);
+            let ring: Ring = Arc::default();
+            let shared = Shared { size: None, latest: Mutex::new(None), audio: Some(AudioSink { ring: ring.clone(), resampler: Mutex::new(None) }), warned: AtomicBool::new(false) };
+            on_audio(&shared, &sample);
+            assert_eq!(ring.lock().iter().copied().collect::<Vec<_>>(), vec![0.1, -0.1, 0.2, -0.2, 0.3, -0.3, 0.4, -0.4]);
+        }
+    }
 }

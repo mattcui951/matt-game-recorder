@@ -80,6 +80,7 @@ pub fn spawn(core: Arc<Core>) {
             let mut screen: Option<ScreenSession> = None;
             let mut last_tick = Instant::now() - Duration::from_secs(5);
             let mut housekeeping_at = Instant::now();
+            let mut retry_start: Option<(u32, Instant)> = None;
             loop {
                 let wait = Duration::from_millis(1000).saturating_sub(last_tick.elapsed());
                 match rx.recv_timeout(wait) {
@@ -96,6 +97,7 @@ pub fn spawn(core: Arc<Core>) {
                     Ok(Cmd::Hotkey(h)) => handle_hotkey(&core, h, &mut active, &mut screen),
                     Ok(Cmd::ToggleScreenRecorder) => toggle_screen(&core, &mut screen),
                     Ok(Cmd::SettingsChanged) => {
+                        retry_start = None;
                         if let Some(m) = active.as_mut() {
                             m.gs = core.settings().games.lol;
                         }
@@ -106,7 +108,7 @@ pub fn spawn(core: Arc<Core>) {
                     continue;
                 }
                 last_tick = Instant::now();
-                tick(&core, &live, &mut active, &mut screen);
+                tick(&core, &live, &mut active, &mut screen, &mut retry_start);
                 if housekeeping_at.elapsed() > Duration::from_secs(1800) {
                     housekeeping_at = Instant::now();
                     core.housekeeping();
@@ -125,7 +127,7 @@ fn set_status(core: &Core, f: impl FnOnce(&mut crate::core::Status)) {
 /// after the end screen; this keeps that tail from starting a second recording.
 static FINISHED_GAME_PID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
-fn tick(core: &Arc<Core>, live: &LiveClient, active: &mut Option<MatchSession>, screen: &mut Option<ScreenSession>) {
+fn tick(core: &Arc<Core>, live: &LiveClient, active: &mut Option<MatchSession>, screen: &mut Option<ScreenSession>, retry_start: &mut Option<(u32, Instant)>) {
     use std::sync::atomic::Ordering;
     let settings = core.settings();
     let gs = settings.games.lol.clone();
@@ -154,10 +156,17 @@ fn tick(core: &Arc<Core>, live: &LiveClient, active: &mut Option<MatchSession>, 
             let target_pid = if session_mode { client_pid.or(game_pid) } else { game_pid.filter(|_| !game_already_saved) };
             if gs.enabled {
                 if let Some(pid) = target_pid {
+                    if retry_start.is_some_and(|(failed_pid, at)| failed_pid == pid && at.elapsed() < Duration::from_secs(10)) {
+                        return;
+                    }
                     match start_match(core, &settings, pid, game_pid, session_mode) {
-                        Ok(Some(m)) => *active = Some(m),
+                        Ok(Some(m)) => {
+                            *retry_start = None;
+                            *active = Some(m);
+                        }
                         Ok(None) => set_status(core, |s| s.state = "waiting".into()),
                         Err(e) => {
+                            *retry_start = Some((pid, Instant::now()));
                             log::error!("could not start recording: {e:#}");
                             set_status(core, |s| {
                                 s.state = "error".into();

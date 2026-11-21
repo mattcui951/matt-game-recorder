@@ -9,17 +9,19 @@ fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();
     let out = PathBuf::from(args.get(1).cloned().unwrap_or_else(|| ".".into()));
     let secs: u64 = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(8);
-    let mon = mgr_lib::win::monitors().into_iter().find(|m| m.primary).expect("monitor");
+    std::fs::create_dir_all(&out)?;
+    let mon = mgr_lib::platform::monitors().into_iter().find(|m| m.primary).expect("monitor");
     println!("monitor {:?}", mon);
     println!("encoders: {:?}", mgr_lib::ffmpeg::encoders().iter().filter(|e| e.available).map(|e| &e.id).collect::<Vec<_>>());
     let rec = Recorder::start(CaptureOptions {
         target: Target::Monitor(mon.handle),
         fps: 60,
-        size: Some((1920 * mon.width / mon.height / 2 * 2 * 1080 / 1080, 1080)),
+        size: Some((1080 * mon.width / mon.height / 2 * 2, 1080)),
         stretch: false,
         cursor: true,
         border: false,
-        encoder: "av1_nvenc".into(),
+        exclude_self: true,
+        encoder: mgr_lib::ffmpeg::best_encoder(""),
         encoder_preset: "default".into(),
         bitrate_kbps: 8000,
         audio: AudioConfig { system: Some(SystemSource::Device("default".into())), system_gain: 1.0, mic: Some("default".into()), mic_gain: 1.0, mic_mono: false },
