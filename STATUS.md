@@ -5,8 +5,10 @@ Version: 1.1.0, released 2026-11-21 (first macOS release)
 
 ## In progress
 
-- 1.1.0 is the first release with macOS (universal DMG, Developer ID signed and notarized by
-  the release workflow). Check the release run's notarization and the Mac updater path.
+- 1.1.0 is the first release with macOS: universal DMG and updater bundle, Developer ID signed,
+  notarized (Apple: Accepted) and stapled by the release workflow; `latest.json` lists
+  windows-x86_64, darwin-aarch64 and darwin-x86_64. The Mac updater path is still untested
+  (needs a later release). The old `macos-v1.0.1` release from Mac testing can be deleted.
 
 ## Unverified
 
