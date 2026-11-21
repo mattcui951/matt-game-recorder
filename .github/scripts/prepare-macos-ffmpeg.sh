@@ -25,7 +25,7 @@ fetch x64 "$MAC_FFMPEG_X64" ffprobe "$MAC_FFPROBE_X64_SHA256"
 for tool in ffmpeg ffprobe; do
     output="src-tauri/binaries/$tool"
     lipo -create "$dl/arm64/$tool" "$dl/x64/$tool" -output "$output"
-    lipo -verify_arch arm64 x86_64 "$output"
+    bash .github/scripts/verify-universal-macos.sh "$output"
     chmod +x "$output"
     # lipo drops the input signatures. Release CI replaces this local signature with Developer ID.
     codesign --force --sign - "$output"

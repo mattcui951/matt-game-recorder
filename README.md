@@ -182,8 +182,8 @@ means installed copies can no longer update themselves.
 FFmpeg is not in git (165 MB per file). The workflow downloads the pinned build from the
 `deps-ffmpeg` release of this repository and checks its SHA-256 (see `FFMPEG_SHA256` in the
 workflow). To change FFmpeg, upload a new zip of `ffmpeg.exe` and `ffprobe.exe` there and update
-the asset name and hash. The macOS builds come from ffmpeg.martin-riedl.de (`MAC_FFMPEG_*` in
-the workflow: one folder and two hashes per architecture).
+the asset name and hash. The macOS builds come from ffmpeg.martin-riedl.de (pinned in
+`.github/scripts/prepare-macos-ffmpeg.sh`, with one folder and two hashes per architecture).
 
 Local builds can use ad-hoc signing. GitHub releases require the `APPLE_*` secrets listed at
 the top of release.yml. The workflow verifies the app's Developer ID signature and stapled

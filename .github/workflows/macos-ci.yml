@@ -67,9 +67,9 @@ jobs:
           bundle=src-tauri/target/universal-apple-darwin/release/bundle
           app="$bundle/macos/Matt Game Recorder.app"
           executable=$(/usr/libexec/PlistBuddy -c 'Print CFBundleExecutable' "$app/Contents/Info.plist")
-          lipo -verify_arch arm64 x86_64 "$app/Contents/MacOS/$executable"
+          bash .github/scripts/verify-universal-macos.sh "$app/Contents/MacOS/$executable"
           for tool in ffmpeg ffprobe; do
-            lipo -verify_arch arm64 x86_64 "$app/Contents/Resources/$tool"
+            bash .github/scripts/verify-universal-macos.sh "$app/Contents/Resources/$tool"
             "$app/Contents/Resources/$tool" -version
           done
           codesign --verify --deep --strict --verbose=2 "$app"
