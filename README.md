@@ -154,6 +154,15 @@ settings live in `tauri.windows.conf.json` and `tauri.macos.conf.json`. Signing 
 artifacts needs `TAURI_SIGNING_PRIVATE_KEY` (the key file's contents) and
 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` set; without them the installer still builds.
 
+### macOS CI from Windows
+
+Push to `mac-support` or `main`, or open/update a pull request targeting either branch.
+The **macOS CI** workflow runs frontend checks, Rust tests, and Clippy on Apple Silicon and
+Intel. The Apple Silicon job builds and verifies a universal DMG. Download
+`macos-universal-test-dmg` under **Artifacts** on the workflow run page. It is an ad-hoc signed
+QA build and does not use release secrets or publish an update. The CI jobs do not exercise
+macOS permission prompts, real League gameplay, or live capture.
+
 ## Release
 
 ```bash
