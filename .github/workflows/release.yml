@@ -51,9 +51,12 @@ jobs:
           Already have Matt Game Recorder? It offers this update by itself. Records League of Legends automatically; the screen recorder works with anything.
           EOF
           } > "$RUNNER_TEMP/notes.md"
-          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft \
-            --title "Matt Game Recorder $GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md"
-          id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.tag_name == \"$GITHUB_REF_NAME\" and .draft) | .id" | head -1)
+          # Take the id from the create response: a new draft can be missing from the release
+          # list for a moment, and an empty id makes tauri-action skip every upload.
+          id=$(gh api "repos/$GITHUB_REPOSITORY/releases" -f tag_name="$GITHUB_REF_NAME" \
+            -F draft=true -f name="Matt Game Recorder $GITHUB_REF_NAME" \
+            -F body=@"$RUNNER_TEMP/notes.md" --jq .id)
+          [ -n "$id" ] || { echo "::error::no release id"; exit 1; }
           echo "id=$id" >> "$GITHUB_OUTPUT"
 
   windows:
