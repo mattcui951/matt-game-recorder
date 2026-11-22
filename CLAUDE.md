@@ -7,7 +7,7 @@ an Outplayed replacement. Public repo, released through GitHub with an in-app up
 ## Start here
 
 - `STATUS.md`: where the app stands, what is next, known issues. Read it before starting.
-- `README.md`: develop, test without playing (`tools/mock_lol.py`), preview the UI, build, release.
+- `DEVELOPMENT.md`: how it works, develop, test without playing (`tools/mock_lol.py`), preview the UI, build, release.
 
 ## Rules
 

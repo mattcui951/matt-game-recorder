@@ -49,6 +49,8 @@ Version: 1.1.0, released 2026-11-21 (first macOS release)
 
 ## Recently done
 
+- README is user-facing only (features, install, updates, importing, licenses). How it works,
+  develop, test, build and release moved to `DEVELOPMENT.md`.
 - README: a feature tour with real screenshots of the installed 1.1.0 app (English UI) in
   `docs/screenshots/*.webp`: match viewer, library, instant supercut, quick trim, League settings,
   themes, Chinese library. No editor shot yet: its first frame is the loading screen with player
