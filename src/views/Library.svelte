@@ -10,7 +10,7 @@
   import Select from '../components/Select.svelte';
   import { api } from '../lib/api';
   import { app, artSrc, errorText, go, mediaSrc, toast, ui } from '../lib/state.svelte';
-  import { bytes, championId, championName, clock, dayLabel, displayTitle, gameName, modeName, timeOfDay } from '../lib/format.svelte';
+  import { bytes, championId, championName, clock, dayLabel, displayTitle, gameName, modeName, sessionChampion, timeOfDay } from '../lib/format.svelte';
   import { FILTER_KINDS, filterKey, meta } from '../lib/events';
   import { i18n, intlLocale, t } from '../lib/i18n.svelte';
   import type { Recording, Session } from '../lib/types';
@@ -45,7 +45,10 @@
   // One button per champion (by championId), sorted by the name shown.
   const allChampions = $derived.by(() => {
     const byId = new Map<string, string>();
-    for (const s of app.library.sessions) if (s.champion && !byId.has(championId(s.champion))) byId.set(championId(s.champion), s.champion);
+    for (const s of app.library.sessions) {
+      const c = sessionChampion(s);
+      if (c && !byId.has(championId(c))) byId.set(championId(c), c);
+    }
     return [...byId].map(([id, name]) => ({ id, label: championName(name) })).sort((a, b) => a.label.localeCompare(b.label, intlLocale()));
   });
   const presentKinds = $derived(new Set(live.flatMap((r) => r.events.map(filterKey))));
@@ -53,11 +56,11 @@
   function matches(s: Session, recs: Recording[]): boolean {
     if (games.length && !games.includes(s.game)) return false;
     if (result !== 'all' && s.result !== result) return false;
-    if (champions.length && !champions.includes(championId(s.champion ?? ''))) return false;
+    if (champions.length && !champions.includes(championId(sessionChampion(s) ?? ''))) return false;
     if (kinds.length && !recs.some((r) => r.events.some((e) => kinds.includes(filterKey(e))))) return false;
     const q = query.trim().toLowerCase();
     // Search matches both languages' names, so "Match 03" and "对局 03" both find it.
-    const names = [s.title, displayTitle(s.title), s.champion ?? '', championName(s.champion), s.game, gameName(s.game), modeName(s.gameMode), ...recs.flatMap((r) => [r.title, displayTitle(r.title)])];
+    const names = [s.title, displayTitle(s.title), s.champion ?? '', championName(sessionChampion(s)), s.game, gameName(s.game), modeName(s.gameMode), ...recs.flatMap((r) => [r.title, displayTitle(r.title)])];
     if (q && !names.some((x) => x.toLowerCase().includes(q))) return false;
     return true;
   }
@@ -487,12 +490,12 @@
                   {#if selecting}<span class="check" aria-hidden="true">{#if selected.includes(s.id)}<Icon name="check" size={14} />{/if}</span>{/if}
                   <span class="r-thumb zoom">{#if lr?.thumb}<img src={mediaSrc(lr, lr.thumb)} alt="" loading="lazy" draggable="false" />{/if}</span>
                   <span class="r-champ">
-                    {#if icon}<img src={icon} alt="" draggable="false" />{:else}<span class="ph">{(s.champion ?? s.game).slice(0, 1)}</span>{/if}
+                    {#if icon}<img src={icon} alt="" draggable="false" />{:else}<span class="ph">{(championName(sessionChampion(s)) || s.game).slice(0, 1)}</span>{/if}
                   </span>
                   <span class="r-title">
                     <span class="t">{displayTitle(s.title)}</span>
                     <span class="s">
-                      {championName(s.champion) || (s.captureMode === 'screen' ? t.library.screenRecording : gameName(s.game))}{s.gameMode ? ` · ${modeName(s.gameMode)}` : ''} · {g.day ? timeOfDay(s.startedAt) : `${dayLabel(s.startedAt)} ${timeOfDay(s.startedAt)}`}
+                      {championName(sessionChampion(s)) || (s.captureMode === 'screen' ? t.library.screenRecording : gameName(s.game))}{s.gameMode ? ` · ${modeName(s.gameMode)}` : ''} · {g.day ? timeOfDay(s.startedAt) : `${dayLabel(s.startedAt)} ${timeOfDay(s.startedAt)}`}
                     </span>
                   </span>
                   <span class="r-result {s.result ?? 'none'}">{s.result === 'win' ? t.common.victory : s.result === 'loss' ? t.common.defeat : ''}</span>
@@ -544,7 +547,7 @@
                     <span class="num c-kda">{#if s.kda}<span class="k">{s.kda.kills}</span>/<span class="d">{s.kda.deaths}</span>/<span class="a">{s.kda.assists}</span>{/if}</span>
                   </span>
                   <span class="c-sub">
-                    <span>{championName(s.champion) || gameName(s.game)}</span>
+                    <span>{championName(sessionChampion(s)) || gameName(s.game)}</span>
                     {#if s.result}<span class="r-result {s.result}">{s.result === 'win' ? t.common.victory : t.common.defeat}</span>{/if}
                     <span>{g.day ? timeOfDay(s.startedAt) : dayLabel(s.startedAt)}</span>
                     <span class="num">{bytes(st.size)}</span>

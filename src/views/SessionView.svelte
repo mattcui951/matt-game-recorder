@@ -7,7 +7,7 @@
   import Timeline from '../components/Timeline.svelte';
   import { api } from '../lib/api';
   import { app, artSrc, backToLibrary, cacheSrc, errorText, go, mediaSrc, offerResult, recordingsOf, sessionById, setUiPref, toast, ui } from '../lib/state.svelte';
-  import { championName, clock, dayLabel, displayTitle, modeName, parseClock, timeOfDay } from '../lib/format.svelte';
+  import { championName, clock, dayLabel, displayTitle, modeName, parseClock, sessionChampion, timeOfDay } from '../lib/format.svelte';
   import { eventLabel, FILTER_KINDS, filterKey, meta, MULTIKILL_TIERS, supercutCounts } from '../lib/events';
   import SupercutKinds from '../components/SupercutKinds.svelte';
   import { t } from '../lib/i18n.svelte';
@@ -223,7 +223,7 @@
           <button class="name" onclick={() => ((nameDraft = rec.title), (renaming = true))} title={t.common.rename}>{displayTitle(rec.title)}<Icon name="edit" size={13} /></button>
         {/if}
         <span class="sub">
-          {rec.title === session.title ? `${dayLabel(session.startedAt)} ${timeOfDay(session.startedAt)}` : displayTitle(session.title)}{session.champion ? ` · ${championName(session.champion)}` : ''}{session.gameMode ? ` · ${modeName(session.gameMode)}` : ''}
+          {rec.title === session.title ? `${dayLabel(session.startedAt)} ${timeOfDay(session.startedAt)}` : displayTitle(session.title)}{sessionChampion(session) ? ` · ${championName(sessionChampion(session))}` : ''}{session.gameMode ? ` · ${modeName(session.gameMode)}` : ''}
         </span>
       </div>
       {#if session.result}<span class="result {session.result}">{session.result === 'win' ? t.common.victory : t.common.defeat}</span>{/if}

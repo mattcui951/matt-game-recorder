@@ -88,6 +88,15 @@ function localName(name: string): string | undefined {
   return championsLocal.locale === i18n.locale ? championsLocal.names[championId(name)] : undefined;
 }
 
+/**
+ * The champion a session (or the live match) is about, as a Data Dragon key when known.
+ * `champion` is the League client's display name in the client's own language ("炽炎雏龙" for
+ * Smolder on a Chinese client), so the key is what display, filters and search should use.
+ */
+export function sessionChampion(s: { champion?: string | null; championKey?: string | null }): string | null {
+  return s.championKey || s.champion || null;
+}
+
 /** Display name for a champion stored as a Data Dragon key ("MasterYi" -> "Master Yi"). */
 export function championName(name?: string | null): string {
   if (!name) return '';

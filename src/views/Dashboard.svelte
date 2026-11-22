@@ -3,7 +3,7 @@
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import Icon from '../components/Icon.svelte';
   import { app, artSrc } from '../lib/state.svelte';
-  import { championName, clock, displayTitle, gameName } from '../lib/format.svelte';
+  import { championName, clock, displayTitle, gameName, sessionChampion } from '../lib/format.svelte';
   import { eventLabel, meta } from '../lib/events';
   import { t } from '../lib/i18n.svelte';
 
@@ -31,7 +31,7 @@
   <div class="hero">
     {#if icon}<img src={icon} alt="" />{/if}
     <div class="who">
-      <span class="champ">{championName(st.champion) || gameName('League of Legends')}</span>
+      <span class="champ">{championName(sessionChampion(st)) || gameName('League of Legends')}</span>
       <span class="mode">{displayTitle(st.title ?? '')} · {st.mode === 'highlights' ? t.dashboard.highlights : st.mode === 'manual' ? t.dashboard.manual : t.dashboard.fullMatch}</span>
     </div>
   </div>

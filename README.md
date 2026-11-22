@@ -1,8 +1,75 @@
 # Matt Game Recorder
 
-A local, ad-free League of Legends recorder for Windows and macOS: full-match or highlights capture,
-game-event timeline, APM, quick trim, instant supercut and a small video editor. English and
-Simplified Chinese.
+**A local, ad-free League of Legends recorder for Windows and macOS.** It records every match on
+its own, marks every kill, death and objective on the timeline, and gets you from "GG" to the
+play you want to see in two clicks. No account, no cloud, no ads.
+
+[**Download the latest release**](https://github.com/mattcui951/matt-game-recorder/releases/latest)
+
+![A recorded match: the video, the event timeline with an APM graph, and the list of moments](docs/screenshots/match-viewer.webp)
+
+## Features
+
+### Every moment, already marked
+
+Kills, deaths, assists, multikills, ultimates, dragons, barons, heralds, turrets, inhibitors and
+the win itself land on the timeline while you play, read live from Riot's own game data. Click a
+moment and the video jumps there. Filter to just your deaths for a quick review, or just your
+kills for the fun part. The APM graph underneath shows where your hands were busiest.
+
+### Your match history at a glance
+
+Every game is a row with its champion, result, KDA, multikills, length and size, grouped by day,
+with a month-by-month bar to jump through the year. Search by champion, filter by result or event,
+keep favorites, and get back anything you deleted by mistake.
+
+![The library: matches grouped by day with champion, result, KDA and multikills](docs/screenshots/library.webp)
+
+### A highlight reel in one click
+
+Instant supercut picks the moments for you: tick quadra kills, triple kills, doubles, deaths or
+ultimates, choose how many seconds to keep before and after each one, and it cuts them into one
+video. Moments close together are joined, so nothing plays twice.
+
+![Instant supercut: choose which moments go into the reel](docs/screenshots/instant-supercut.webp)
+
+### Trim the play, share the clip
+
+Quick trim zooms the timeline in on the moment, lets you drag the start and end, and saves it as a
+new clip. For more, a small video editor combines clips from several games, slices and
+reorders them, and exports in 16:9, 9:16 for phones, 1:1, 4:5 or 21:9.
+
+![Quick trim: drag the range around the moment and save the clip](docs/screenshots/quick-trim.webp)
+
+### Set it once, then forget it
+
+Pick how League is recorded: the full match, only the highlights around your events, the whole
+session from client to close, or nothing until you press a hotkey. Choose which events get
+bookmarked, and whether the app opens itself when the game ends.
+
+![League of Legends settings: capture modes and the events that get bookmarked](docs/screenshots/league-settings.webp)
+
+### Light on your PC
+
+- **Frames never leave the GPU.** Capture and encoding run on the graphics card (NVENC AV1 on
+  Windows, VideoToolbox on macOS), so recording costs well under 1% CPU.
+- **Small files.** AV1 recordings, and a highlights mode that keeps only the seconds around your
+  events.
+- **Plain files on your disk.** Every recording is an MP4 with a small sidecar file; copying the
+  folder is a full backup.
+- **Coming from Outplayed?** Import converts your old library, champion, KDA and timeline included.
+
+### Make it yours
+
+28 themes (dark, light and high contrast), each one tweakable, and eight languages: English, 简体中文, 繁體中文, Español,
+Français, 日本語, 한국어 and Русский.
+
+<table>
+  <tr>
+    <td><img src="docs/screenshots/themes.webp" alt="Appearance settings with a grid of dark themes"></td>
+    <td><img src="docs/screenshots/library-zh.webp" alt="The library in Simplified Chinese"></td>
+  </tr>
+</table>
 
 ## Install
 

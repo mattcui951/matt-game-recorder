@@ -1,6 +1,6 @@
 # Status
 
-Updated: 2026-11-21
+Updated: 2026-11-22
 Version: 1.1.0, released 2026-11-21 (first macOS release)
 
 ## In progress
@@ -25,6 +25,7 @@ Version: 1.1.0, released 2026-11-21 (first macOS release)
 
 - One 543 KB JS chunk (all eight locales); Vite warns over 500 KB. Harmless for a local app;
   lazy-loading locales would clear it.
+- Quick trim at 20x: the range handles cover the tick labels at the range edges (8:30, 9:00).
 - Test-pass ideas not done: a clicked moment seeks but stays paused; the Update page says
   "from GitHub releases" twice; Settings hotkey fields are narrower than the selects below them.
 - No open requests. Ideas raised along the way: Highlights mode saves disk but not CPU or GPU,
@@ -47,6 +48,15 @@ Version: 1.1.0, released 2026-11-21 (first macOS release)
   under HKCU CapabilityAccessManager: `LastUsedTimeStop` 0 means a capture is running now.
 
 ## Recently done
+
+- README: a feature tour with real screenshots of the installed 1.1.0 app (English UI) in
+  `docs/screenshots/*.webp`: match viewer, library, instant supercut, quick trim, League settings,
+  themes, Chinese library. No editor shot yet: its first frame is the loading screen with player
+  names; take one seeked into gameplay at 9:16.
+- Champion names in the UI now come from `championKey` (`sessionChampion` in `format.svelte.ts`).
+  `champion` is the League client's own display name, so matches played on a Chinese client
+  showed "炽炎雏龙" in the English UI and fell out of the champion filter. Svelte check passes;
+  not yet seen in the real window (needs the next build).
 
 - macOS on Apple silicon: a mock League match exercised game-window capture, VideoToolbox,
   saving, event bookmarks and in-app playback. Also checked interrupted recording recovery,
