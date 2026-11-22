@@ -8,6 +8,22 @@ play you want to see in two clicks. No account, no cloud, no ads.
 
 ![A recorded match: the video, the event timeline with an APM graph, and the list of moments](docs/screenshots/match-viewer.webp)
 
+**Contents**
+
+- [Features](#features)
+  - [Every moment, already marked](#every-moment-already-marked)
+  - [Your match history at a glance](#your-match-history-at-a-glance)
+  - [A highlight reel in one click](#a-highlight-reel-in-one-click)
+  - [Trim the play, share the clip](#trim-the-play-share-the-clip)
+  - [Set it once, then forget it](#set-it-once-then-forget-it)
+  - [Light on your PC](#light-on-your-pc)
+  - [Make it yours](#make-it-yours)
+- [Install](#install)
+- [Updates](#updates)
+- [Importing](#importing)
+- [Contributing](#contributing)
+- [Third-party software](#third-party-software)
+
 ## Features
 
 ### Every moment, already marked
